@@ -1,0 +1,20 @@
+{
+  "Author": "Kriss Hietala",
+  "Name": "Spiritbond Tracker",
+  "InternalName": "SpiritBondTracker",
+  "AssemblyVersion": "1.0.3.0",
+  "Description": "Tracks equipment spiritbond increases during duties, groups them by instance, and monitors active spiritbond buffs.",
+  "ApplicableVersion": "any",
+  "Tags": [
+    "spiritbond",
+    "equipment",
+    "duties"
+  ],
+  "DalamudApiLevel": 15,
+  "LoadRequiredState": 0,
+  "LoadSync": false,
+  "CanUnloadAsync": false,
+  "LoadPriority": 0,
+  "Punchline": "Tracks spiritbond growth during duties and monitors buffs.",
+  "AcceptsFeedback": true
+}

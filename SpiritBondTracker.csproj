@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Dalamud.NET.Sdk/15.0.0">
+  <PropertyGroup>
+    <Version>1.0.3</Version>
+    <Author>Kriss Hietala</Author>
+    <Name>Spiritbond Tracker</Name>
+    <Punchline>Tracks spiritbond growth during duties and monitors buffs.</Punchline>
+    <Description>Tracks equipment spiritbond increases during duties, groups them by instance, and monitors active spiritbond buffs.</Description>
+    <Tags>spiritbond;equipment;duties</Tags>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+</Project>
