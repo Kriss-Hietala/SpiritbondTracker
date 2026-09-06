@@ -15,11 +15,11 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyDescriptionAttribute(("Tracks equipment spiritbond increases during duties, groups them by instance, and" +
     " monitors active spiritbond buffs."))]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.3.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.3")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.3+be57e73af2340d8cafe1486e295315bdff1ed970")]
 [assembly: System.Reflection.AssemblyProductAttribute("SpiritBondTracker")]
 [assembly: System.Reflection.AssemblyTitleAttribute("SpiritBondTracker")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.3.0")]
-[assembly: System.Reflection.AssemblyMetadataAttribute("RepositoryUrl", "")]
+[assembly: System.Reflection.AssemblyMetadataAttribute("RepositoryUrl", "https://github.com/Kriss-Hietala/SpiritbondTracker.git")]
 [assembly: System.Runtime.Versioning.TargetPlatformAttribute("Windows7.0")]
 [assembly: System.Runtime.Versioning.SupportedOSPlatformAttribute("Windows7.0")]
 

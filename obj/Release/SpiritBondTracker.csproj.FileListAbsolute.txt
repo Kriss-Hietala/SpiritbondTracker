@@ -6,3 +6,4 @@
 /var/home/bazzite/Games/SpiritbondTracker/bin/Release/SpiritBondTracker.deps.json
 /var/home/bazzite/Games/SpiritbondTracker/bin/Release/SpiritBondTracker.dll
 /var/home/bazzite/Games/SpiritbondTracker/obj/Release/SpiritBondTracker.dll
+/var/home/bazzite/Games/SpiritbondTracker/obj/Release/SpiritBondTracker.sourcelink.json
