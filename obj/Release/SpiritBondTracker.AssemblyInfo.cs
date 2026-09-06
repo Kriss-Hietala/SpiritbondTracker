@@ -15,7 +15,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyDescriptionAttribute(("Tracks equipment spiritbond increases during duties, groups them by instance, and" +
     " monitors active spiritbond buffs."))]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.3.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.3+be57e73af2340d8cafe1486e295315bdff1ed970")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.3+7ba9f9674bc029e952ab16f8081eb335836ea5e7")]
 [assembly: System.Reflection.AssemblyProductAttribute("SpiritBondTracker")]
 [assembly: System.Reflection.AssemblyTitleAttribute("SpiritBondTracker")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.3.0")]
