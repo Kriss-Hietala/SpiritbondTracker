@@ -6,8 +6,8 @@
     "AssemblyVersion": "1.0.3.0",
     "Description": "Tracks equipment spiritbond increases during duties, groups them by instance, and monitors active spiritbond buffs.",
     "ApplicableVersion": "any",
-    "DownloadLinkInstall": "https://raw.githubusercontent.com/Kriss-Hietala/SpiritbondTracker/refs/heads/main/publish.zip",
-    "DownloadLinkUpdate": "https://raw.githubusercontent.com/Kriss-Hietala/SpiritbondTracker/refs/heads/main/publish.zip",
+    "DownloadLinkInstall": "https://github.com/Kriss-Hietala/SpiritbondTracker/releases/download/v1.0.3.0/publish.zip",
+    "DownloadLinkUpdate": "https://github.com/Kriss-Hietala/SpiritbondTracker/releases/download/v1.0.3.0/publish.zip",
     "RepoUrl": "https://github.com/Kriss-Hietala/SpiritbondTracker"
   }
 ]
