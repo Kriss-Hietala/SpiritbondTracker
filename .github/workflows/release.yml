@@ -3,6 +3,8 @@ name: Build
 on:
   push:
     branches: [main, master]
+    tags:
+      - 'v*'
   pull_request:
     branches: [main, master]
 
@@ -11,34 +13,30 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v4
     
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '10.0.x'
     
-    - name: Create dummy Dalamud installation for SDK
+    # Pobieramy prawdziwe DLL-ki Dalamuda z oficjalnego repozytorium goatcorp
+    - name: Download real Dalamud binaries
       run: |
         mkdir -p /home/runner/.xlcore/dalamud/Hooks/dev
-        # Create minimalDalamud files the SDK checks for
-        touch /home/runner/.xlcore/dalamud/Hooks/dev/Dalamud.dll
-        touch /home/runner/.xlcore/dalamud/Hooks/dev/FFXIVClientStructs.dll
-        touch /home/runner/.xlcore/dalamud/Hooks/dev/ImGui.NET.dll
-        touch /home/runner/.xlcore/dalamud/Hooks/dev/Lumina.dll
-        touch /home/runner/.xlcore/dalamud/Hooks/dev/Lumina.Excel.dll
-        touch /home/runner/.xlcore/dalamud/Hooks/dev/Newtonsoft.Json.dll
-        touch /home/runner/.xlcore/dalamud/Hooks/dev/System.Runtime.CompilerServices.Unsafe.dll
-    
+        curl -sL https://github.com/goatcorp/Dalamud/releases/latest/download/latest.zip -o /tmp/dalamud.zip
+        unzip -q /tmp/dalamud.zip -d /home/runner/.xlcore/dalamud/Hooks/dev/
+
     - name: Restore dependencies
       run: dotnet restore SpiritbondTracker.csproj --source https://api.nuget.org/v3/index.json
-    
+
     - name: Build Release
       run: dotnet build SpiritbondTracker.csproj -c Release --no-restore
-    
+
     - name: Pack
       run: dotnet pack SpiritbondTracker.csproj -c Release --no-build --output ./artifacts
-    
+
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
