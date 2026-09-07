@@ -3,7 +3,7 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'v*' # Skrypt uruchomi się automatycznie, gdy wyślesz na GitHub tag zaczynający się na 'v' (np. v1.0.4.0)
+      - 'v*'
 
 jobs:
   build:
@@ -15,7 +15,14 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x' # Zmień na wersję .NET, której używasz (np. 9.0 lub 10.0)
+          dotnet-version: '10.0.x'
+
+      # --- TUTAJ DODAJEMY KROK POBIERAJĄCY DALAMUD DLA SDK ---
+      - name: Download Dalamud for SDK
+        run: |
+          mkdir -p ~/.xlcore/dalamud/Hooks/dev/
+          dotnet tool install -g Dalamud.Packager || true
+      # -------------------------------------------------------
 
       - name: Build project
         run: dotnet build SpiritbondTracker.csproj -c Release
@@ -23,14 +30,10 @@ jobs:
       - name: Create clean publish directory & zip
         run: |
           mkdir -p publish_folder
-          
-          # Kopiujemy pliki, dbając o dokładne nazwy (case-sensitive)
-          # Znajduje plik DLL niezależnie od dokładnej ścieżki netX.0
           find bin/Release -name "SpiritbondTracker.dll" -o -name "SpiritBondTracker.dll" -exec cp {} publish_folder/SpiritbondTracker.dll \;
           cp SpiritbondTracker.json publish_folder/
           cp icon.png publish_folder/
           
-          # Tworzymy płaski ZIP (zawierający pliki bezpośrednio w środku, tak jak wymaga Dalamud)
           cd publish_folder
           zip -r ../publish.zip *
           cd ..
