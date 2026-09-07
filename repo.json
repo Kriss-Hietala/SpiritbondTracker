@@ -2,14 +2,14 @@
   {
     "Author": "Kriss Hietala",
     "Name": "Spiritbond Tracker",
-    "InternalName": "SpiritBondTracker",
+    "InternalName": "SpiritbondTracker",
     "AssemblyVersion": "1.0.3.0",
-    "Punchline": "Tracks spiritbond growth during duties and monitors buffs.",
-    "Description": "Tracks equipment spiritbond increases during duties, groups them by instance, and monitors active spiritbond buffs.",
+    "Punchline": "Tracks equipment spiritbond growth during duties.",
+    "Description": "Tracks equipment spiritbond increases during duties, groups them by instance, and monitors active spiritbond buffs. use /spiritbond to open menu",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
+    "RepoUrl": "https://github.com/Kriss-Hietala/SpiritbondTracker",
     "DownloadLinkInstall": "https://github.com/Kriss-Hietala/SpiritbondTracker/releases/download/v1.0.3.0/publish.zip",
-    "DownloadLinkUpdate": "https://github.com/Kriss-Hietala/SpiritbondTracker/releases/download/v1.0.3.0/publish.zip",
-    "RepoUrl": "https://github.com/Kriss-Hietala/SpiritbondTracker"
+    "DownloadLinkUpdate": "https://github.com/Kriss-Hietala/SpiritbondTracker/releases/download/v1.0.3.0/publish.zip"
   }
 ]
