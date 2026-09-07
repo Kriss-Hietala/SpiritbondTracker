@@ -1,45 +1,36 @@
-name: Build and Release
+name: Build
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-
-      # Diagnostyka sieciowa - sprawdźmy czy GitHub w ogóle ma dojście do Dalamuda
-      - name: Test Dalamud Feed Connectivity
-        run: |
-          curl -v https://nuget.dalamud.dev/v3/index.json || true
-
-      - name: Build project
-        run: dotnet build SpiritbondTracker.csproj -c Release
-
-      - name: Create clean publish directory & zip
-        run: |
-          mkdir -p publish_folder
-          find bin/Release -name "SpiritbondTracker.dll" -o -name "SpiritBondTracker.dll" -exec cp {} publish_folder/SpiritbondTracker.dll \;
-          cp SpiritbondTracker.json publish_folder/
-          cp icon.png publish_folder/
-          
-          cd publish_folder
-          zip -r ../publish.zip *
-          cd ..
-
-      - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: publish.zip
-          latest: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - uses: actions/checkout@v4
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+    
+    # Add NuGet.org as explicit source (no longer need Dalamud feed)
+    - name: Restore dependencies
+      run: dotnet restore SpiritbondTracker.csproj --source https://api.nuget.org/v3/index.json
+    
+    - name: Build Release
+      run: dotnet build SpiritbondTracker.csproj -c Release --no-restore
+    
+    # Optional: Pack for release
+    - name: Pack
+      run: dotnet pack SpiritbondTracker.csproj -c Release --no-build --output ./artifacts
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: SpiritbondTracker
+        path: ./artifacts/

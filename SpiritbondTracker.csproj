@@ -1,17 +1,24 @@
-<?xml version="1.0" encoding="utf-8"?>
-<Project Sdk="Dalamud.NET.Sdk/15.0.0">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Version>1.0.3</Version>
     <Author>Kriss Hietala</Author>
     <Name>Spiritbond Tracker</Name>
     <Punchline>Tracks spiritbond growth during duties and monitors buffs.</Punchline>
     <Description>Tracks equipment spiritbond increases during duties, groups them by instance, and monitors active spiritbond buffs.</Description>
     <Tags>spiritbond;equipment;duties</Tags>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Nowy model: Dalamud SDK z NuGet.org -->
+    <PackageReference Include="Dalamud.NET.Sdk" Version="15.0.0" />
+    
+    <!-- Pakowanie wydań -->
+    <PackageReference Include="DalamudPackager" Version="15.0.0" />
+
     <None Update="icon.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
