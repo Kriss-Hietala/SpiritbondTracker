@@ -1,67 +1,92 @@
-name: Build
+name: Build and release SpiritbondTracker
 
 on:
   push:
-    branches: [main, master]
-  pull_request:
-    branches: [main, master]
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
-  build:
+  build-release:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Setup .NET 10
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '10.0.x'
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
 
-    - name: Download and install Dalamud distribution
-      shell: bash
-      run: |
-        set -euo pipefail
-        mkdir -p /home/runner/.xlcore/dalamud/Hooks/dev
-        wget -q https://goatcorp.github.io/dalamud-distrib/latest.zip -O /tmp/dalamud.zip
-        unzip -q /tmp/dalamud.zip -d /home/runner/.xlcore/dalamud/Hooks/dev
+      - name: Install Dalamud files required by SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.xlcore/dalamud/Hooks/dev"
+          wget -q "https://goatcorp.github.io/dalamud-distrib/latest.zip" -O /tmp/dalamud.zip
+          unzip -q /tmp/dalamud.zip -d "$HOME/.xlcore/dalamud/Hooks/dev"
 
-    - name: Restore dependencies
-      run: dotnet restore SpiritbondTracker.csproj --source https://api.nuget.org/v3/index.json
+      - name: Restore dependencies
+        run: dotnet restore SpiritbondTracker.csproj --source https://api.nuget.org/v3/index.json
 
-    - name: Build Release
-      run: dotnet build SpiritbondTracker.csproj -c Release --no-restore
+      - name: Build Release
+        run: dotnet build SpiritbondTracker.csproj -c Release --no-restore
 
-    - name: Create plugin package
-      shell: bash
-      run: |
-        set -euo pipefail
+      - name: Create plugin package
+        shell: bash
+        run: |
+          set -euo pipefail
 
-        echo "=== Build output ==="
-        find ./bin -type f -print || true
+          rm -rf artifacts package
+          mkdir -p artifacts package
 
-        DLL_PATH="$(find ./bin -type f -name 'SpiritbondTracker.dll' -print -quit)"
+          DLL_PATH="$(find bin -type f -name 'SpiritbondTracker.dll' -print -quit)"
 
-        if [ -z "$DLL_PATH" ]; then
-          echo "::error::SpiritbondTracker.dll was not found after a successful build."
-          exit 1
-        fi
+          if [ -z "$DLL_PATH" ]; then
+            echo "::error::Could not find SpiritbondTracker.dll after build."
+            find bin -type f -print || true
+            exit 1
+          fi
 
-        echo "Found plugin DLL: $DLL_PATH"
+          DLL_DIR="$(dirname "$DLL_PATH")"
 
-        mkdir -p ./artifacts/SpiritbondTracker
-        cp "$DLL_PATH" ./artifacts/SpiritbondTracker/
+          echo "Using build output directory: $DLL_DIR"
 
-        DLL_DIR="$(dirname "$DLL_PATH")"
-        find "$DLL_DIR" -maxdepth 1 -type f -name '*.json' -exec cp {} ./artifacts/SpiritbondTracker/ \;
+          cp "$DLL_PATH" package/SpiritbondTracker.dll
 
-        echo "=== Artifact contents ==="
-        find ./artifacts -type f -print
+          if [ -f "$DLL_DIR/SpiritbondTracker.deps.json" ]; then
+            cp "$DLL_DIR/SpiritbondTracker.deps.json" package/
+          fi
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: SpiritbondTracker
-        path: ./artifacts/
-        if-no-files-found: error
+          cp "SpiritbondTracker.json" package/SpiritbondTracker.json
+
+          cd package
+          zip -r ../artifacts/publish.zip .
+          cd ..
+
+          echo "=== Final ZIP contents ==="
+          unzip -l artifacts/publish.zip
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TAG="build-${{ github.run_number }}"
+
+          gh release create "$TAG" \
+            artifacts/publish.zip \
+            --title "Spiritbond Tracker build ${{ github.run_number }}" \
+            --notes "Automated build from commit ${{ github.sha }}" \
+            --latest
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpiritbondTracker
+          path: artifacts/publish.zip
+          if-no-files-found: error
