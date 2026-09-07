@@ -2,7 +2,7 @@
   {
     "Author": "Kriss Hietala",
     "Name": "Spiritbond Tracker",
-    "InternalName": "SpiritbondTracker",
+    "InternalName": "SpiritBondTracker",
     "AssemblyVersion": "1.0.3.0",
     "Punchline": "Tracks spiritbond growth during duties and monitors buffs.",
     "Description": "Tracks equipment spiritbond increases during duties, groups them by instance, and monitors active spiritbond buffs.",
