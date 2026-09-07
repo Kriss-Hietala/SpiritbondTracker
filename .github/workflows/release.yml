@@ -17,12 +17,9 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      # --- TUTAJ DODAJEMY KROK POBIERAJĄCY DALAMUD DLA SDK ---
-      - name: Download Dalamud for SDK
-        run: |
-          mkdir -p ~/.xlcore/dalamud/Hooks/dev/
-          dotnet tool install -g Dalamud.Packager || true
-      # -------------------------------------------------------
+      # Oficjalna akcja przygotowująca środowisko Dalamud dla GitHub Actions
+      - name: Setup Dalamud
+        uses: daemitus/setup-dalamud@v1
 
       - name: Build project
         run: dotnet build SpiritbondTracker.csproj -c Release
