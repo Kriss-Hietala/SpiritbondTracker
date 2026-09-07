@@ -31,8 +31,15 @@ jobs:
     - name: Build Release
       run: dotnet build SpiritbondTracker.csproj -c Release --no-restore
     
-    - name: Pack
-      run: dotnet pack SpiritbondTracker.csproj -c Release --no-build --output ./artifacts
+    - name: Create plugin package
+      run: |
+        # Create plugin ZIP structure manually
+        mkdir -p ./artifacts/SpiritbondTracker
+        cp ./bin/Release/net10.0/SpiritbondTracker.dll ./artifacts/SpiritbondTracker/
+        # Copy json manifest if it exists
+        if [ -f ./bin/Release/net10.0/SpiritbondTracker.json ]; then
+          cp ./bin/Release/net10.0/SpiritbondTracker.json ./artifacts/SpiritbondTracker/
+        fi
     
     - name: Upload artifact
       uses: actions/upload-artifact@v4
