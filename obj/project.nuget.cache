@@ -1,49 +1,16 @@
 {
   "version": 2,
-  "dgSpecHash": "zCfX+DNRWdQ=",
-  "success": false,
+  "dgSpecHash": "jQYH+I/XrpE=",
+  "success": true,
   "projectFilePath": "/var/home/bazzite/Games/SpiritbondTracker/SpiritbondTracker.csproj",
   "expectedPackageFiles": [
     "/home/bazzite/.nuget/packages/bcnencoder.net/2.2.1/bcnencoder.net.2.2.1.nupkg.sha512",
     "/home/bazzite/.nuget/packages/communitytoolkit.highperformance/8.4.0/communitytoolkit.highperformance.8.4.0.nupkg.sha512",
-    "/home/bazzite/.nuget/packages/imgui.net/1.91.6.1/imgui.net.1.91.6.1.nupkg.sha512",
+    "/home/bazzite/.nuget/packages/dalamudpackager/15.0.0/dalamudpackager.15.0.0.nupkg.sha512",
+    "/home/bazzite/.nuget/packages/dotnet.reproduciblebuilds/1.2.39/dotnet.reproduciblebuilds.1.2.39.nupkg.sha512",
     "/home/bazzite/.nuget/packages/lumina/7.6.1/lumina.7.6.1.nupkg.sha512",
     "/home/bazzite/.nuget/packages/lumina.excel/7.5.0/lumina.excel.7.5.0.nupkg.sha512",
     "/home/bazzite/.nuget/packages/microsoft.extensions.objectpool/10.0.0/microsoft.extensions.objectpool.10.0.0.nupkg.sha512"
   ],
-  "logs": [
-    {
-      "code": "NU1101",
-      "level": "Error",
-      "message": "Nie można znaleźć pakietu Dalamud.Core. W źródłach nie istnieją pakiety z tym identyfikatorem: nuget.org",
-      "projectPath": "/var/home/bazzite/Games/SpiritbondTracker/SpiritbondTracker.csproj",
-      "filePath": "/var/home/bazzite/Games/SpiritbondTracker/SpiritbondTracker.csproj",
-      "libraryId": "Dalamud.Core",
-      "targetGraphs": [
-        "net10.0"
-      ]
-    },
-    {
-      "code": "NU1101",
-      "level": "Error",
-      "message": "Nie można znaleźć pakietu Dalamud.Packager. W źródłach nie istnieją pakiety z tym identyfikatorem: nuget.org",
-      "projectPath": "/var/home/bazzite/Games/SpiritbondTracker/SpiritbondTracker.csproj",
-      "filePath": "/var/home/bazzite/Games/SpiritbondTracker/SpiritbondTracker.csproj",
-      "libraryId": "Dalamud.Packager",
-      "targetGraphs": [
-        "net10.0"
-      ]
-    },
-    {
-      "code": "NU1101",
-      "level": "Error",
-      "message": "Nie można znaleźć pakietu FFXIVClientStructs. W źródłach nie istnieją pakiety z tym identyfikatorem: nuget.org",
-      "projectPath": "/var/home/bazzite/Games/SpiritbondTracker/SpiritbondTracker.csproj",
-      "filePath": "/var/home/bazzite/Games/SpiritbondTracker/SpiritbondTracker.csproj",
-      "libraryId": "FFXIVClientStructs",
-      "targetGraphs": [
-        "net10.0"
-      ]
-    }
-  ]
+  "logs": []
 }

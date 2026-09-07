@@ -22,6 +22,37 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      - name: Auto-bump version based on run number
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Generowanie numeru wersji: 1.0.<run_number>.0
+          NEW_VERSION="1.0.${{ github.run_number }}.0"
+          echo "Bumping version to: $NEW_VERSION"
+
+          # Aktualizacja wersji w SpiritbondTracker.json
+          python3 -c "
+          import json
+          with open('SpiritbondTracker.json', 'r') as f:
+              data = json.load(f)
+          data['AssemblyVersion'] = '$NEW_VERSION'
+          with open('SpiritbondTracker.json', 'w') as f:
+              json.dump(data, f, indent=2)
+          "
+
+          # Aktualizacja wersji w repo.json
+          python3 -c "
+          import json
+          with open('repo.json', 'r') as f:
+              data = json.load(f)
+          for plugin in data:
+              if plugin.get('InternalName') == 'SpiritbondTracker':
+                  plugin['AssemblyVersion'] = '$NEW_VERSION'
+          with open('repo.json', 'w') as f:
+              json.dump(data, f, indent=2)
+          "
+
       - name: Install Dalamud files required by SDK
         shell: bash
         run: |
@@ -34,7 +65,7 @@ jobs:
         run: dotnet restore SpiritbondTracker.csproj --source https://api.nuget.org/v3/index.json
 
       - name: Build Release
-        run: dotnet build SpiritbondTracker.csproj -c Release --no-restore
+        run: dotnet build SpiritbondTracker.csproj -c Release --no-restore -p:Version="1.0.${{ github.run_number }}.0" -p:AssemblyVersion="1.0.${{ github.run_number }}.0" -p:FileVersion="1.0.${{ github.run_number }}.0"
 
       - name: Create plugin package
         shell: bash
@@ -54,8 +85,6 @@ jobs:
 
           DLL_DIR="$(dirname "$DLL_PATH")"
 
-          echo "Using build output directory: $DLL_DIR"
-
           cp "$DLL_PATH" package/SpiritbondTracker.dll
 
           if [ -f "$DLL_DIR/SpiritbondTracker.deps.json" ]; then
@@ -63,30 +92,35 @@ jobs:
           fi
 
           cp "SpiritbondTracker.json" package/SpiritbondTracker.json
+          [ -f icon.png ] && cp icon.png package/
 
           cd package
           zip -r ../artifacts/publish.zip .
           cd ..
-
-          echo "=== Final ZIP contents ==="
-          unzip -l artifacts/publish.zip
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          TAG="build-${{ github.run_number }}"
+          TAG="v1.0.${{ github.run_number }}.0"
 
           gh release create "$TAG" \
             artifacts/publish.zip \
-            --title "Spiritbond Tracker build ${{ github.run_number }}" \
-            --notes "Automated build from commit ${{ github.sha }}" \
+            --title "Spiritbond Tracker $TAG" \
+            --notes "Automated release $TAG from commit ${{ github.sha }}" \
             --latest
 
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: SpiritbondTracker
-          path: artifacts/publish.zip
-          if-no-files-found: error
+      - name: Commit bumped manifests back to repository
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add SpiritbondTracker.json repo.json
+          
+          # Sprawdzenie czy są zmiany przed commitem
+          if ! git diff-index --quiet HEAD; then
+            git commit -m "Auto-bump version to 1.0.${{ github.run_number }}.0 [skip ci]"
+            git push origin main
+          fi
