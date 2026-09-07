@@ -18,6 +18,18 @@ jobs:
       with:
         dotnet-version: '10.0.x'
     
+    - name: Create dummy Dalamud installation for SDK
+      run: |
+        mkdir -p /home/runner/.xlcore/dalamud/Hooks/dev
+        # Create minimalDalamud files the SDK checks for
+        touch /home/runner/.xlcore/dalamud/Hooks/dev/Dalamud.dll
+        touch /home/runner/.xlcore/dalamud/Hooks/dev/FFXIVClientStructs.dll
+        touch /home/runner/.xlcore/dalamud/Hooks/dev/ImGui.NET.dll
+        touch /home/runner/.xlcore/dalamud/Hooks/dev/Lumina.dll
+        touch /home/runner/.xlcore/dalamud/Hooks/dev/Lumina.Excel.dll
+        touch /home/runner/.xlcore/dalamud/Hooks/dev/Newtonsoft.Json.dll
+        touch /home/runner/.xlcore/dalamud/Hooks/dev/System.Runtime.CompilerServices.Unsafe.dll
+    
     - name: Restore dependencies
       run: dotnet restore SpiritbondTracker.csproj --source https://api.nuget.org/v3/index.json
     

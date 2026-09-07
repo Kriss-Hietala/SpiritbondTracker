@@ -31,25 +31,39 @@
           }
         }
       },
-      "DalamudPackager/15.0.0": {
+      "ImGui.NET/1.91.6.1": {
         "type": "package",
-        "build": {
-          "build/DalamudPackager.props": {},
-          "build/DalamudPackager.targets": {}
+        "compile": {
+          "lib/net8.0/ImGui.NET.dll": {
+            "related": ".xml"
+          }
         },
-        "buildMultiTargeting": {
-          "buildMultiTargeting/DalamudPackager.props": {}
-        }
-      },
-      "DotNet.ReproducibleBuilds/1.2.39": {
-        "type": "package",
-        "build": {
-          "buildTransitive/DotNet.ReproducibleBuilds.props": {},
-          "buildTransitive/DotNet.ReproducibleBuilds.targets": {}
+        "runtime": {
+          "lib/net8.0/ImGui.NET.dll": {
+            "related": ".xml"
+          }
         },
-        "buildMultiTargeting": {
-          "buildMultiTargeting/DotNet.ReproducibleBuilds.props": {},
-          "buildMultiTargeting/DotNet.ReproducibleBuilds.targets": {}
+        "runtimeTargets": {
+          "runtimes/linux-x64/native/libcimgui.so": {
+            "assetType": "native",
+            "rid": "linux-x64"
+          },
+          "runtimes/osx/native/libcimgui.dylib": {
+            "assetType": "native",
+            "rid": "osx"
+          },
+          "runtimes/win-arm64/native/cimgui.dll": {
+            "assetType": "native",
+            "rid": "win-arm64"
+          },
+          "runtimes/win-x64/native/cimgui.dll": {
+            "assetType": "native",
+            "rid": "win-x64"
+          },
+          "runtimes/win-x86/native/cimgui.dll": {
+            "assetType": "native",
+            "rid": "win-x86"
+          }
         }
       },
       "Lumina/7.6.1": {
@@ -140,42 +154,27 @@
         "lib/netstandard2.1/CommunityToolkit.HighPerformance.xml"
       ]
     },
-    "DalamudPackager/15.0.0": {
-      "sha512": "411vwC8/X8Z/sQ2TI6v3SvOn66xFPeOjFn3Zn+h0d3Ox2t1kFm66AhDvmx/qcMwVrR+Hidxj0dadpQ2dgyXMBQ==",
+    "ImGui.NET/1.91.6.1": {
+      "sha512": "Ph3j8pO6UM28PPJWP+5LEJSPVPkd8ivpVS8tRyY9b0IHn1HDIrMZ2o/FdiXaYW6YhNxMHmbevw6Jcfs+IDKi0Q==",
       "type": "package",
-      "path": "dalamudpackager/15.0.0",
+      "path": "imgui.net/1.91.6.1",
       "files": [
         ".nupkg.metadata",
         ".signature.p7s",
-        "build/DalamudPackager.props",
-        "build/DalamudPackager.targets",
-        "buildMultiTargeting/DalamudPackager.props",
-        "dalamudpackager.15.0.0.nupkg.sha512",
-        "dalamudpackager.nuspec",
-        "tasks/net48/DalamudPackager.dll",
-        "tasks/net48/Newtonsoft.Json.dll",
-        "tasks/net48/YamlDotNet.dll",
-        "tasks/netstandard2.1/DalamudPackager.dll",
-        "tasks/netstandard2.1/Newtonsoft.Json.dll",
-        "tasks/netstandard2.1/YamlDotNet.dll"
-      ]
-    },
-    "DotNet.ReproducibleBuilds/1.2.39": {
-      "sha512": "fcFN01tDTIQqDuTwr1jUQK/geofiwjG5DycJQOnC72i1SsLAk1ELe+apBOuZ11UMQG8YKFZG1FgvjZPbqHyatg==",
-      "type": "package",
-      "path": "dotnet.reproduciblebuilds/1.2.39",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "README.md",
-        "build/DotNet.ReproducibleBuilds.props",
-        "build/DotNet.ReproducibleBuilds.targets",
-        "buildMultiTargeting/DotNet.ReproducibleBuilds.props",
-        "buildMultiTargeting/DotNet.ReproducibleBuilds.targets",
-        "buildTransitive/DotNet.ReproducibleBuilds.props",
-        "buildTransitive/DotNet.ReproducibleBuilds.targets",
-        "dotnet.reproduciblebuilds.1.2.39.nupkg.sha512",
-        "dotnet.reproduciblebuilds.nuspec"
+        "build/net40/ImGui.NET.targets",
+        "imgui.net.1.91.6.1.nupkg.sha512",
+        "imgui.net.nuspec",
+        "lib/net6.0/ImGui.NET.dll",
+        "lib/net6.0/ImGui.NET.xml",
+        "lib/net8.0/ImGui.NET.dll",
+        "lib/net8.0/ImGui.NET.xml",
+        "lib/netstandard2.0/ImGui.NET.dll",
+        "lib/netstandard2.0/ImGui.NET.xml",
+        "runtimes/linux-x64/native/libcimgui.so",
+        "runtimes/osx/native/libcimgui.dylib",
+        "runtimes/win-arm64/native/cimgui.dll",
+        "runtimes/win-x64/native/cimgui.dll",
+        "runtimes/win-x86/native/cimgui.dll"
       ]
     },
     "Lumina/7.6.1": {
@@ -229,8 +228,10 @@
   },
   "projectFileDependencyGroups": {
     "net10.0": [
-      "DalamudPackager >= 15.0.0",
-      "DotNet.ReproducibleBuilds >= 1.2.39",
+      "Dalamud.Core >= 15.0.0",
+      "Dalamud.Packager >= 15.0.0",
+      "FFXIVClientStructs >= 3.0.0",
+      "ImGui.NET >= 1.91.6.1",
       "Lumina >= 7.6.1",
       "Lumina.Excel >= 7.5.0"
     ]
@@ -268,9 +269,6 @@
           "NU1605"
         ]
       },
-      "restoreLockProperties": {
-        "restorePackagesWithLockFile": "true"
-      },
       "restoreAuditProperties": {
         "enableAudit": "true",
         "auditLevel": "low",
@@ -283,14 +281,22 @@
         "framework": "net10.0",
         "targetAlias": "net10.0",
         "dependencies": {
-          "DalamudPackager": {
+          "Dalamud.Core": {
             "target": "Package",
             "version": "[15.0.0, )"
           },
-          "DotNet.ReproducibleBuilds": {
+          "Dalamud.Packager": {
             "suppressParent": "All",
             "target": "Package",
-            "version": "[1.2.39, )"
+            "version": "[15.0.0, )"
+          },
+          "FFXIVClientStructs": {
+            "target": "Package",
+            "version": "[3.0.0, )"
+          },
+          "ImGui.NET": {
+            "target": "Package",
+            "version": "[1.91.6.1, )"
           },
           "Lumina": {
             "target": "Package",
@@ -594,5 +600,34 @@
         }
       }
     }
-  }
+  },
+  "logs": [
+    {
+      "code": "NU1101",
+      "level": "Error",
+      "message": "Nie można znaleźć pakietu Dalamud.Core. W źródłach nie istnieją pakiety z tym identyfikatorem: nuget.org",
+      "libraryId": "Dalamud.Core",
+      "targetGraphs": [
+        "net10.0"
+      ]
+    },
+    {
+      "code": "NU1101",
+      "level": "Error",
+      "message": "Nie można znaleźć pakietu Dalamud.Packager. W źródłach nie istnieją pakiety z tym identyfikatorem: nuget.org",
+      "libraryId": "Dalamud.Packager",
+      "targetGraphs": [
+        "net10.0"
+      ]
+    },
+    {
+      "code": "NU1101",
+      "level": "Error",
+      "message": "Nie można znaleźć pakietu FFXIVClientStructs. W źródłach nie istnieją pakiety z tym identyfikatorem: nuget.org",
+      "libraryId": "FFXIVClientStructs",
+      "targetGraphs": [
+        "net10.0"
+      ]
+    }
+  ]
 }

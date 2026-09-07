@@ -34,9 +34,6 @@
             "NU1605"
           ]
         },
-        "restoreLockProperties": {
-          "restorePackagesWithLockFile": "true"
-        },
         "restoreAuditProperties": {
           "enableAudit": "true",
           "auditLevel": "low",
@@ -49,14 +46,22 @@
           "framework": "net10.0",
           "targetAlias": "net10.0",
           "dependencies": {
-            "DalamudPackager": {
+            "Dalamud.Core": {
               "target": "Package",
               "version": "[15.0.0, )"
             },
-            "DotNet.ReproducibleBuilds": {
+            "Dalamud.Packager": {
               "suppressParent": "All",
               "target": "Package",
-              "version": "[1.2.39, )"
+              "version": "[15.0.0, )"
+            },
+            "FFXIVClientStructs": {
+              "target": "Package",
+              "version": "[3.0.0, )"
+            },
+            "ImGui.NET": {
+              "target": "Package",
+              "version": "[1.91.6.1, )"
             },
             "Lumina": {
               "target": "Package",

@@ -1,29 +1,16 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Dalamud.NET.Sdk/15.0.0">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>SpiritbondTracker</AssemblyName>
     <RootNamespace>SpiritbondTracker</RootNamespace>
-    <!-- Enable Dalamud.NET.Sdk features when Dalamud is installed -->
-    <UseDalamudSdk Condition="'$(DALAMUD_PATH)' != ''">true</UseDalamudSdk>
+    <!-- Allow overriding Dalamud path for CI -->
+    <DalamudPath Condition="'$(DalamudPath)' == ''">$(DALAMUD_PATH)</DalamudPath>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Core Dalamud packages - always needed -->
-    <PackageReference Include="Dalamud.Core" Version="15.0.0" />
-    <PackageReference Include="Dalamud.Packager" Version="15.0.0" PrivateAssets="all" />
-    <PackageReference Include="FFXIVClientStructs" Version="3.0.0" />
-    <PackageReference Include="ImGui.NET" Version="1.91.6.1" />
-    
-    <!-- Lumina for game data -->
     <PackageReference Include="Lumina" Version="7.6.1" />
     <PackageReference Include="Lumina.Excel" Version="7.5.0" />
-    
-    <!-- Dalamud.NET.Sdk only for local dev with Dalamud installed -->
-    <PackageReference Include="Dalamud.NET.Sdk" Version="15.0.0" Condition="'$(UseDalamudSdk)' == 'true'" PrivateAssets="all" />
   </ItemGroup>
-
-  <!-- Import Dalamud.NET.Sdk targets only when explicitly enabled -->
-  <Import Project="Dalamud.NET.Sdk.targets" Condition="'$(UseDalamudSdk)' == 'true' And Exists('$(NuGetPackageRoot)dalamud.net.sdk\15.0.0\Sdk\Sdk.targets')" />
 </Project>
