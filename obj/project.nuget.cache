@@ -1,21 +1,16 @@
 {
   "version": 2,
-  "dgSpecHash": "HwKmrbBZy7Q=",
+  "dgSpecHash": "WJJKVYt7euU=",
   "success": true,
   "projectFilePath": "/var/home/bazzite/Games/SpiritbondTracker/SpiritbondTracker.csproj",
   "expectedPackageFiles": [
+    "/home/bazzite/.nuget/packages/bcnencoder.net/2.2.1/bcnencoder.net.2.2.1.nupkg.sha512",
+    "/home/bazzite/.nuget/packages/communitytoolkit.highperformance/8.4.0/communitytoolkit.highperformance.8.4.0.nupkg.sha512",
     "/home/bazzite/.nuget/packages/dalamudpackager/15.0.0/dalamudpackager.15.0.0.nupkg.sha512",
-    "/home/bazzite/.nuget/packages/dotnet.reproduciblebuilds/1.2.39/dotnet.reproduciblebuilds.1.2.39.nupkg.sha512"
+    "/home/bazzite/.nuget/packages/dotnet.reproduciblebuilds/1.2.39/dotnet.reproduciblebuilds.1.2.39.nupkg.sha512",
+    "/home/bazzite/.nuget/packages/lumina/7.6.1/lumina.7.6.1.nupkg.sha512",
+    "/home/bazzite/.nuget/packages/lumina.excel/7.5.0/lumina.excel.7.5.0.nupkg.sha512",
+    "/home/bazzite/.nuget/packages/microsoft.extensions.objectpool/10.0.0/microsoft.extensions.objectpool.10.0.0.nupkg.sha512"
   ],
-  "logs": [
-    {
-      "code": "NU1900",
-      "level": "Warning",
-      "message": "Podczas pobierania danych o lukach w zabezpieczeniach pakietu wystąpił błąd: Nie można załadować indeksu usługi dla źródła https://nuget.dalamud.dev/v3/index.json.",
-      "projectPath": "/var/home/bazzite/Games/SpiritbondTracker/SpiritbondTracker.csproj",
-      "warningLevel": 1,
-      "filePath": "/var/home/bazzite/Games/SpiritbondTracker/SpiritbondTracker.csproj",
-      "targetGraphs": []
-    }
-  ]
+  "logs": []
 }

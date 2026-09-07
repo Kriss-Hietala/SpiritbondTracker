@@ -13,19 +13,17 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Setup .NET
+    - name: Setup .NET 10
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '10.0.x'
     
-    # Add NuGet.org as explicit source (no longer need Dalamud feed)
     - name: Restore dependencies
       run: dotnet restore SpiritbondTracker.csproj --source https://api.nuget.org/v3/index.json
     
     - name: Build Release
       run: dotnet build SpiritbondTracker.csproj -c Release --no-restore
     
-    # Optional: Pack for release
     - name: Pack
       run: dotnet pack SpiritbondTracker.csproj -c Release --no-build --output ./artifacts
     

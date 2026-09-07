@@ -1,7 +1,36 @@
 {
   "version": 4,
   "targets": {
-    "net10.0-windows": {
+    "net10.0": {
+      "BCnEncoder.Net/2.2.1": {
+        "type": "package",
+        "dependencies": {
+          "CommunityToolkit.HighPerformance": "8.4.0"
+        },
+        "compile": {
+          "lib/netstandard2.1/BCnEncoder.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/netstandard2.1/BCnEncoder.dll": {
+            "related": ".xml"
+          }
+        }
+      },
+      "CommunityToolkit.HighPerformance/8.4.0": {
+        "type": "package",
+        "compile": {
+          "lib/net8.0/CommunityToolkit.HighPerformance.dll": {
+            "related": ".pdb;.xml"
+          }
+        },
+        "runtime": {
+          "lib/net8.0/CommunityToolkit.HighPerformance.dll": {
+            "related": ".pdb;.xml"
+          }
+        }
+      },
       "DalamudPackager/15.0.0": {
         "type": "package",
         "build": {
@@ -22,10 +51,95 @@
           "buildMultiTargeting/DotNet.ReproducibleBuilds.props": {},
           "buildMultiTargeting/DotNet.ReproducibleBuilds.targets": {}
         }
+      },
+      "Lumina/7.6.1": {
+        "type": "package",
+        "dependencies": {
+          "BCnEncoder.Net": "2.2.1",
+          "Microsoft.Extensions.ObjectPool": "10.0.0"
+        },
+        "compile": {
+          "lib/net10.0/Lumina.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net10.0/Lumina.dll": {
+            "related": ".xml"
+          }
+        }
+      },
+      "Lumina.Excel/7.5.0": {
+        "type": "package",
+        "dependencies": {
+          "Lumina": "7.6.0"
+        },
+        "compile": {
+          "lib/net10.0/Lumina.Excel.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net10.0/Lumina.Excel.dll": {
+            "related": ".xml"
+          }
+        }
+      },
+      "Microsoft.Extensions.ObjectPool/10.0.0": {
+        "type": "package",
+        "compile": {
+          "lib/net10.0/Microsoft.Extensions.ObjectPool.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net10.0/Microsoft.Extensions.ObjectPool.dll": {
+            "related": ".xml"
+          }
+        }
       }
     }
   },
   "libraries": {
+    "BCnEncoder.Net/2.2.1": {
+      "sha512": "tI5+/OQo0kciLqWrViRjpOH+IL3FjexYnoWZajiGV41g/EM9CGbWsxsPzBDmpoxNkrV9uox/EtIhCIi9chBSFw==",
+      "type": "package",
+      "path": "bcnencoder.net/2.2.1",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "bcnencoder.net.2.2.1.nupkg.sha512",
+        "bcnencoder.net.nuspec",
+        "lib/netstandard2.1/BCnEncoder.dll",
+        "lib/netstandard2.1/BCnEncoder.xml"
+      ]
+    },
+    "CommunityToolkit.HighPerformance/8.4.0": {
+      "sha512": "flxspiBs0G/0GMp7IK2J2ijV9bTG6hEwFc/z6ekHqB6nwRJ4Ry2yLdx+TkbCUYFCl4XhABkAwomeKbT6zM2Zlg==",
+      "type": "package",
+      "path": "communitytoolkit.highperformance/8.4.0",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "Icon.png",
+        "License.md",
+        "ThirdPartyNotices.txt",
+        "communitytoolkit.highperformance.8.4.0.nupkg.sha512",
+        "communitytoolkit.highperformance.nuspec",
+        "lib/net7.0/CommunityToolkit.HighPerformance.dll",
+        "lib/net7.0/CommunityToolkit.HighPerformance.pdb",
+        "lib/net7.0/CommunityToolkit.HighPerformance.xml",
+        "lib/net8.0/CommunityToolkit.HighPerformance.dll",
+        "lib/net8.0/CommunityToolkit.HighPerformance.pdb",
+        "lib/net8.0/CommunityToolkit.HighPerformance.xml",
+        "lib/netstandard2.0/CommunityToolkit.HighPerformance.dll",
+        "lib/netstandard2.0/CommunityToolkit.HighPerformance.pdb",
+        "lib/netstandard2.0/CommunityToolkit.HighPerformance.xml",
+        "lib/netstandard2.1/CommunityToolkit.HighPerformance.dll",
+        "lib/netstandard2.1/CommunityToolkit.HighPerformance.pdb",
+        "lib/netstandard2.1/CommunityToolkit.HighPerformance.xml"
+      ]
+    },
     "DalamudPackager/15.0.0": {
       "sha512": "411vwC8/X8Z/sQ2TI6v3SvOn66xFPeOjFn3Zn+h0d3Ox2t1kFm66AhDvmx/qcMwVrR+Hidxj0dadpQ2dgyXMBQ==",
       "type": "package",
@@ -63,19 +177,69 @@
         "dotnet.reproduciblebuilds.1.2.39.nupkg.sha512",
         "dotnet.reproduciblebuilds.nuspec"
       ]
+    },
+    "Lumina/7.6.1": {
+      "sha512": "c3WhtkGaYwy6Bf2OFCOa5W/bGRlexDCLFALy9hBpIp7IQqPmAzmqQO9pg0cDQUvN+JelON06JkrJ0mK9PP40Ew==",
+      "type": "package",
+      "path": "lumina/7.6.1",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "LICENSE",
+        "lib/net10.0/Lumina.dll",
+        "lib/net10.0/Lumina.xml",
+        "lumina.7.6.1.nupkg.sha512",
+        "lumina.nuspec"
+      ]
+    },
+    "Lumina.Excel/7.5.0": {
+      "sha512": "yrwLCgUoslSrrYaeK2Z0UAcD1gUMv4e3/UObIBNiJG6IJZhO00XzzSFZWxZNiYyhAvzza5UUDyQ6xz4Kz2kscw==",
+      "type": "package",
+      "path": "lumina.excel/7.5.0",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "LICENSE",
+        "README.md",
+        "lib/net10.0/Lumina.Excel.dll",
+        "lib/net10.0/Lumina.Excel.xml",
+        "lumina.excel.7.5.0.nupkg.sha512",
+        "lumina.excel.nuspec"
+      ]
+    },
+    "Microsoft.Extensions.ObjectPool/10.0.0": {
+      "sha512": "bpeCq0IYmVLACyEUMzFIOQX+zZUElG1t+nu1lSxthe7B+1oNYking7b91305+jNB6iwojp9fqTY9O+Nh7ULQxg==",
+      "type": "package",
+      "path": "microsoft.extensions.objectpool/10.0.0",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "Icon.png",
+        "THIRD-PARTY-NOTICES.TXT",
+        "lib/net10.0/Microsoft.Extensions.ObjectPool.dll",
+        "lib/net10.0/Microsoft.Extensions.ObjectPool.xml",
+        "lib/net462/Microsoft.Extensions.ObjectPool.dll",
+        "lib/net462/Microsoft.Extensions.ObjectPool.xml",
+        "lib/netstandard2.0/Microsoft.Extensions.ObjectPool.dll",
+        "lib/netstandard2.0/Microsoft.Extensions.ObjectPool.xml",
+        "microsoft.extensions.objectpool.10.0.0.nupkg.sha512",
+        "microsoft.extensions.objectpool.nuspec"
+      ]
     }
   },
   "projectFileDependencyGroups": {
-    "net10.0-windows": [
+    "net10.0": [
       "DalamudPackager >= 15.0.0",
-      "DotNet.ReproducibleBuilds >= 1.2.39"
+      "DotNet.ReproducibleBuilds >= 1.2.39",
+      "Lumina >= 7.6.1",
+      "Lumina.Excel >= 7.5.0"
     ]
   },
   "packageFolders": {
     "/home/bazzite/.nuget/packages/": {}
   },
   "project": {
-    "version": "1.0.3",
+    "version": "1.0.0",
     "restore": {
       "projectUniqueName": "/var/home/bazzite/Games/SpiritbondTracker/SpiritbondTracker.csproj",
       "projectName": "SpiritbondTracker",
@@ -84,20 +248,18 @@
       "outputPath": "/var/home/bazzite/Games/SpiritbondTracker/obj/",
       "projectStyle": "PackageReference",
       "configFilePaths": [
-        "/var/home/bazzite/Games/SpiritbondTracker/NuGet.config",
         "/home/bazzite/.nuget/NuGet/NuGet.Config"
       ],
       "originalTargetFrameworks": [
-        "net10.0-windows"
+        "net10.0"
       ],
       "sources": {
-        "https://api.nuget.org/v3/index.json": {},
-        "https://nuget.dalamud.dev/v3/index.json": {}
+        "https://api.nuget.org/v3/index.json": {}
       },
       "frameworks": {
-        "net10.0-windows": {
-          "framework": "net10.0-windows7.0",
-          "targetAlias": "net10.0-windows",
+        "net10.0": {
+          "framework": "net10.0",
+          "targetAlias": "net10.0",
           "projectReferences": {}
         }
       },
@@ -117,9 +279,9 @@
       "SdkAnalysisLevel": "10.0.400"
     },
     "frameworks": {
-      "net10.0-windows": {
-        "framework": "net10.0-windows7.0",
-        "targetAlias": "net10.0-windows",
+      "net10.0": {
+        "framework": "net10.0",
+        "targetAlias": "net10.0",
         "dependencies": {
           "DalamudPackager": {
             "target": "Package",
@@ -129,6 +291,14 @@
             "suppressParent": "All",
             "target": "Package",
             "version": "[1.2.39, )"
+          },
+          "Lumina": {
+            "target": "Package",
+            "version": "[7.6.1, )"
+          },
+          "Lumina.Excel": {
+            "target": "Package",
+            "version": "[7.5.0, )"
           }
         },
         "imports": [
@@ -424,13 +594,5 @@
         }
       }
     }
-  },
-  "logs": [
-    {
-      "code": "NU1900",
-      "level": "Warning",
-      "warningLevel": 1,
-      "message": "Podczas pobierania danych o lukach w zabezpieczeniach pakietu wystąpił błąd: Nie można załadować indeksu usługi dla źródła https://nuget.dalamud.dev/v3/index.json."
-    }
-  ]
+  }
 }
