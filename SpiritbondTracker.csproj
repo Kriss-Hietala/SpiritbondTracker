@@ -5,15 +5,23 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>SpiritbondTracker</AssemblyName>
     <RootNamespace>SpiritbondTracker</RootNamespace>
-    <!-- Enable Dalamud.NET.Sdk features only when Dalamud is installed (local dev) -->
+    <!-- Enable Dalamud.NET.Sdk features when Dalamud is installed -->
     <UseDalamudSdk Condition="'$(DALAMUD_PATH)' != ''">true</UseDalamudSdk>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Dalamud.NET.Sdk" Version="15.0.0" Condition="'$(UseDalamudSdk)' == 'true'" PrivateAssets="all" />
+    <!-- Core Dalamud packages - always needed -->
+    <PackageReference Include="Dalamud.Core" Version="15.0.0" />
+    <PackageReference Include="Dalamud.Packager" Version="15.0.0" PrivateAssets="all" />
+    <PackageReference Include="FFXIVClientStructs" Version="3.0.0" />
+    <PackageReference Include="ImGui.NET" Version="1.91.6.1" />
+    
+    <!-- Lumina for game data -->
     <PackageReference Include="Lumina" Version="7.6.1" />
     <PackageReference Include="Lumina.Excel" Version="7.5.0" />
-    <PackageReference Include="DalamudPackager" Version="15.0.0" Condition="'$(UseDalamudSdk)' != 'true'" PrivateAssets="all" />
+    
+    <!-- Dalamud.NET.Sdk only for local dev with Dalamud installed -->
+    <PackageReference Include="Dalamud.NET.Sdk" Version="15.0.0" Condition="'$(UseDalamudSdk)' == 'true'" PrivateAssets="all" />
   </ItemGroup>
 
   <!-- Import Dalamud.NET.Sdk targets only when explicitly enabled -->
