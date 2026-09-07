@@ -3,8 +3,6 @@ name: Build
 on:
   push:
     branches: [main, master]
-    tags:
-      - 'v*'
   pull_request:
     branches: [main, master]
 
@@ -13,32 +11,28 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
     
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '10.0.x'
-
-    - name: Download Dalamud Distribution
+    
+    - name: Download Dalamud distribution
       run: |
-        mkdir -p /home/runner/.xlcore/dalamud/Hooks/dev
-        # Pobranie bezpośrednio z oficjalnego repozytorium dystrybucyjnego goatcorp
-        curl -fSL "https://github.com/goatcorp/dalamud-distrib/raw/main/stg/dalamud.zip" -o /tmp/dalamud.zip || \
-        curl -fSL "https://github.com/goatcorp/dalamud-distrib/raw/main/release/dalamud.zip" -o /tmp/dalamud.zip
-        unzip -q -o /tmp/dalamud.zip -d /home/runner/.xlcore/dalamud/Hooks/dev/
-        ls -la /home/runner/.xlcore/dalamud/Hooks/dev/ | head -n 15
-
+        mkdir -p /tmp/dalamud
+        wget https://goatcorp.github.io/dalamud-distrib/latest.zip -O /tmp/dalamud.zip
+        unzip /tmp/dalamud.zip -d /tmp/dalamud
+    
     - name: Restore dependencies
       run: dotnet restore SpiritbondTracker.csproj --source https://api.nuget.org/v3/index.json
-
+    
     - name: Build Release
       run: dotnet build SpiritbondTracker.csproj -c Release --no-restore
-
+    
     - name: Pack
       run: dotnet pack SpiritbondTracker.csproj -c Release --no-build --output ./artifacts
-
+    
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:

@@ -5,8 +5,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>SpiritbondTracker</AssemblyName>
     <RootNamespace>SpiritbondTracker</RootNamespace>
-    <!-- Allow overriding Dalamud path for CI -->
-    <DalamudPath Condition="'$(DalamudPath)' == ''">$(DALAMUD_PATH)</DalamudPath>
   </PropertyGroup>
 
   <ItemGroup>
