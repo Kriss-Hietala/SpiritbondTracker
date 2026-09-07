@@ -18,11 +18,12 @@ jobs:
       with:
         dotnet-version: '10.0.x'
     
-    - name: Download Dalamud distribution
+    - name: Download and install Dalamud distribution
       run: |
-        mkdir -p /tmp/dalamud
+        # SDK expects Dalamud at this exact path
+        mkdir -p /home/runner/.xlcore/dalamud/Hooks/dev
         wget https://goatcorp.github.io/dalamud-distrib/latest.zip -O /tmp/dalamud.zip
-        unzip /tmp/dalamud.zip -d /tmp/dalamud
+        unzip /tmp/dalamud.zip -d /home/runner/.xlcore/dalamud/Hooks/dev
     
     - name: Restore dependencies
       run: dotnet restore SpiritbondTracker.csproj --source https://api.nuget.org/v3/index.json
