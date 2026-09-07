@@ -17,11 +17,10 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      # Ręczne dodanie i wymuszenie źródeł NuGet w środowisku GitHub Actions
-      - name: Configure NuGet Sources
+      # Diagnostyka sieciowa - sprawdźmy czy GitHub w ogóle ma dojście do Dalamuda
+      - name: Test Dalamud Feed Connectivity
         run: |
-          dotnet nuget add source https://api.nuget.org/v3/index.json -n nuget.org || true
-          dotnet nuget add source https://nuget.dalamud.dev/v3/index.json -n dalamud || true
+          curl -v https://nuget.dalamud.dev/v3/index.json || true
 
       - name: Build project
         run: dotnet build SpiritbondTracker.csproj -c Release
