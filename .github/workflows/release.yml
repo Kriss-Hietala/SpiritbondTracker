@@ -18,7 +18,7 @@ jobs:
           dotnet-version: '10.0.x' # Zmień na wersję .NET, której używasz (np. 9.0 lub 10.0)
 
       - name: Build project
-        run: dotnet build SpiritBondTracker.csproj -c Release
+        run: dotnet build SpiritbondTracker.csproj -c Release
 
       - name: Create clean publish directory & zip
         run: |
