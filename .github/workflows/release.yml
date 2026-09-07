@@ -21,8 +21,13 @@ jobs:
       with:
         dotnet-version: '10.0.x'
 
-    - name: Setup Dalamud
-      uses: goatcorp/setup-dalamud@v2
+    - name: Fetch and Install Dalamud Binaries
+      run: |
+        mkdir -p /home/runner/.xlcore/dalamud/Hooks/dev
+        # Pobieramy oficjalne archiwum Dalamuda ze sprawdzonego CDN
+        curl -fSL "https://kamori.goats.dev/Dalamud/Release/Runtime?track=release" -o /tmp/dalamud.zip || \
+        curl -fSL "https://goatcorp.github.io/dalamud-distrib/stg/dalamud.zip" -o /tmp/dalamud.zip
+        unzip -q -o /tmp/dalamud.zip -d /home/runner/.xlcore/dalamud/Hooks/dev/
 
     - name: Restore dependencies
       run: dotnet restore SpiritbondTracker.csproj --source https://api.nuget.org/v3/index.json
