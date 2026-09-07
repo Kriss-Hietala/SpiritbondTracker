@@ -77,20 +77,22 @@
   "project": {
     "version": "1.0.3",
     "restore": {
-      "projectUniqueName": "/var/home/bazzite/Games/SpiritbondTracker/SpiritBondTracker.csproj",
-      "projectName": "SpiritBondTracker",
-      "projectPath": "/var/home/bazzite/Games/SpiritbondTracker/SpiritBondTracker.csproj",
+      "projectUniqueName": "/var/home/bazzite/Games/SpiritbondTracker/SpiritbondTracker.csproj",
+      "projectName": "SpiritbondTracker",
+      "projectPath": "/var/home/bazzite/Games/SpiritbondTracker/SpiritbondTracker.csproj",
       "packagesPath": "/home/bazzite/.nuget/packages/",
       "outputPath": "/var/home/bazzite/Games/SpiritbondTracker/obj/",
       "projectStyle": "PackageReference",
       "configFilePaths": [
+        "/var/home/bazzite/Games/SpiritbondTracker/NuGet.config",
         "/home/bazzite/.nuget/NuGet/NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "net10.0-windows"
       ],
       "sources": {
-        "https://api.nuget.org/v3/index.json": {}
+        "https://api.nuget.org/v3/index.json": {},
+        "https://nuget.dalamud.dev/v3/index.json": {}
       },
       "frameworks": {
         "net10.0-windows": {
@@ -422,5 +424,13 @@
         }
       }
     }
-  }
+  },
+  "logs": [
+    {
+      "code": "NU1900",
+      "level": "Warning",
+      "warningLevel": 1,
+      "message": "Podczas pobierania danych o lukach w zabezpieczeniach pakietu wystąpił błąd: Nie można załadować indeksu usługi dla źródła https://nuget.dalamud.dev/v3/index.json."
+    }
+  ]
 }

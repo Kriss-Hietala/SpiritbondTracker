@@ -1,11 +1,21 @@
 {
   "version": 2,
-  "dgSpecHash": "wDYcAu+pG2I=",
+  "dgSpecHash": "HwKmrbBZy7Q=",
   "success": true,
-  "projectFilePath": "/var/home/bazzite/Games/SpiritbondTracker/SpiritBondTracker.csproj",
+  "projectFilePath": "/var/home/bazzite/Games/SpiritbondTracker/SpiritbondTracker.csproj",
   "expectedPackageFiles": [
     "/home/bazzite/.nuget/packages/dalamudpackager/15.0.0/dalamudpackager.15.0.0.nupkg.sha512",
     "/home/bazzite/.nuget/packages/dotnet.reproduciblebuilds/1.2.39/dotnet.reproduciblebuilds.1.2.39.nupkg.sha512"
   ],
-  "logs": []
+  "logs": [
+    {
+      "code": "NU1900",
+      "level": "Warning",
+      "message": "Podczas pobierania danych o lukach w zabezpieczeniach pakietu wystąpił błąd: Nie można załadować indeksu usługi dla źródła https://nuget.dalamud.dev/v3/index.json.",
+      "projectPath": "/var/home/bazzite/Games/SpiritbondTracker/SpiritbondTracker.csproj",
+      "warningLevel": 1,
+      "filePath": "/var/home/bazzite/Games/SpiritbondTracker/SpiritbondTracker.csproj",
+      "targetGraphs": []
+    }
+  ]
 }

@@ -1,0 +1,9 @@
+/var/home/bazzite/Games/SpiritbondTracker/bin/Release/SpiritbondTracker.deps.json
+/var/home/bazzite/Games/SpiritbondTracker/bin/Release/SpiritbondTracker.dll
+/var/home/bazzite/Games/SpiritbondTracker/obj/Release/SpiritbondTracker.csproj.AssemblyReference.cache
+/var/home/bazzite/Games/SpiritbondTracker/obj/Release/SpiritbondTracker.GeneratedMSBuildEditorConfig.editorconfig
+/var/home/bazzite/Games/SpiritbondTracker/obj/Release/SpiritbondTracker.AssemblyInfoInputs.cache
+/var/home/bazzite/Games/SpiritbondTracker/obj/Release/SpiritbondTracker.AssemblyInfo.cs
+/var/home/bazzite/Games/SpiritbondTracker/obj/Release/SpiritbondTracker.csproj.CoreCompileInputs.cache
+/var/home/bazzite/Games/SpiritbondTracker/obj/Release/SpiritbondTracker.sourcelink.json
+/var/home/bazzite/Games/SpiritbondTracker/obj/Release/SpiritbondTracker.dll
