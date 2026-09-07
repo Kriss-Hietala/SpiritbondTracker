@@ -683,12 +683,14 @@ public class SpiritbondWindow : Window
     private string currentDutyName = "Not in duty";
     private bool inDuty = false;
 
-    public override void Draw()
+   public override void Draw()
     {
         if (config.UiScale > 1.0f)
         {
             ImGui.SetWindowFontScale(config.UiScale);
         }
+
+        float fontScale = ImGui.GetFontSize() / 17.0f;
 
         var style = ImGui.GetStyle();
         Vector4 windowBgColor;
@@ -903,14 +905,20 @@ public class SpiritbondWindow : Window
         var gearList = GetCurrentGearList();
         int columnCount = 4 + (config.ShowEligibilityColumn ? 1 : 0);
 
+       
+        float gainColWidth = Math.Max(
+            ImGui.CalcTextSize("Gain in Duty").X,
+            ImGui.CalcTextSize("+100.00%").X
+        ) + (ImGui.GetStyle().CellPadding.X * 2) + 12f;
+
         if (ImGui.BeginTable("GearTable", columnCount, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.SizingFixedFit))
         {
-            ImGui.TableSetupColumn("Slot", ImGuiTableColumnFlags.WidthFixed, 95f);
+            ImGui.TableSetupColumn("Slot", ImGuiTableColumnFlags.WidthFixed, 110f * fontScale);
             ImGui.TableSetupColumn("Item", ImGuiTableColumnFlags.WidthStretch);
             if (config.ShowEligibilityColumn)
-                ImGui.TableSetupColumn("Eligibility", ImGuiTableColumnFlags.WidthFixed, 105f);
-            ImGui.TableSetupColumn("Spiritbond", ImGuiTableColumnFlags.WidthFixed, 95f);
-            ImGui.TableSetupColumn("Gain in Duty", ImGuiTableColumnFlags.WidthFixed, 105f);
+                ImGui.TableSetupColumn("Eligibility", ImGuiTableColumnFlags.WidthFixed, 110f * fontScale);
+            ImGui.TableSetupColumn("Spiritbond", ImGuiTableColumnFlags.WidthFixed, 100f * fontScale);
+            ImGui.TableSetupColumn("Gain in Duty", ImGuiTableColumnFlags.WidthFixed, gainColWidth);
             ImGui.TableHeadersRow();
 
             foreach (var gear in gearList)
@@ -1023,16 +1031,21 @@ public class SpiritbondWindow : Window
                             ImGui.Indent(10f);
                             ImGui.TextColored(new Vector4(0.8f, 0.8f, 0.8f, 1.0f), $"Items progressed in this duty as [{jobUsed}]:");
 
-                            if (ImGui.BeginTable($"HistoryTable_{group.Key.GetHashCode()}", 6, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingFixedFit))
+                           
+                            float dateColumnWidth = Math.Max(
+                                ImGui.CalcTextSize("Date & Time").X,
+                                ImGui.CalcTextSize("2026-00-00 00:00:00").X
+                            ) + (ImGui.GetStyle().CellPadding.X * 2) + 12f;
+
+                            if (ImGui.BeginTable($"HistoryTable_{group.Key.GetHashCode()}", 6, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.ScrollX))
                             {
                                 ImGui.TableSetupColumn("Item Name", ImGuiTableColumnFlags.WidthStretch);
-                                ImGui.TableSetupColumn("Category", ImGuiTableColumnFlags.WidthFixed, 90f);
-                                ImGui.TableSetupColumn("Job", ImGuiTableColumnFlags.WidthFixed, 90f);
-                                ImGui.TableSetupColumn("iLvl", ImGuiTableColumnFlags.WidthFixed, 55f);
-                                ImGui.TableSetupColumn("Gain", ImGuiTableColumnFlags.WidthFixed, 75f);
-                                ImGui.TableSetupColumn("Date & Time", ImGuiTableColumnFlags.WidthFixed, 140f);
+                                ImGui.TableSetupColumn("Category", ImGuiTableColumnFlags.WidthFixed, 80f * fontScale);
+                                ImGui.TableSetupColumn("Job", ImGuiTableColumnFlags.WidthFixed, 70f * fontScale);
+                                ImGui.TableSetupColumn("iLvl", ImGuiTableColumnFlags.WidthFixed, 50f * fontScale);
+                                ImGui.TableSetupColumn("Gain", ImGuiTableColumnFlags.WidthFixed, 65f * fontScale);
+                                ImGui.TableSetupColumn("Date & Time", ImGuiTableColumnFlags.WidthFixed, dateColumnWidth);
                                 ImGui.TableHeadersRow();
-
                                 foreach (var item in group)
                                 {
                                     ImGui.TableNextRow();
