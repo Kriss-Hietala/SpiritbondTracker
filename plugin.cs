@@ -1023,13 +1023,14 @@ public class SpiritbondWindow : Window
                             ImGui.Indent(10f);
                             ImGui.TextColored(new Vector4(0.8f, 0.8f, 0.8f, 1.0f), $"Items progressed in this duty as [{jobUsed}]:");
 
-                            if (ImGui.BeginTable($"HistoryTable_{group.Key.GetHashCode()}", 5, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingFixedFit))
+                            if (ImGui.BeginTable($"HistoryTable_{group.Key.GetHashCode()}", 6, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingFixedFit))
                             {
                                 ImGui.TableSetupColumn("Item Name", ImGuiTableColumnFlags.WidthStretch);
                                 ImGui.TableSetupColumn("Category", ImGuiTableColumnFlags.WidthFixed, 90f);
                                 ImGui.TableSetupColumn("Job", ImGuiTableColumnFlags.WidthFixed, 90f);
                                 ImGui.TableSetupColumn("iLvl", ImGuiTableColumnFlags.WidthFixed, 55f);
                                 ImGui.TableSetupColumn("Gain", ImGuiTableColumnFlags.WidthFixed, 75f);
+                                ImGui.TableSetupColumn("Date & Time", ImGuiTableColumnFlags.WidthFixed, 140f);
                                 ImGui.TableHeadersRow();
 
                                 foreach (var item in group)
@@ -1045,6 +1046,8 @@ public class SpiritbondWindow : Window
                                     ImGui.Text($"i{item.ItemLevel}");
                                     ImGui.TableNextColumn();
                                     ImGui.TextColored(new Vector4(0.0f, 1.0f, 0.5f, 1.0f), item.Gained > 0 ? $"+{item.Gained:F2}%" : "0.00%");
+                                    ImGui.TableNextColumn();
+                                    ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1.0f), item.Timestamp.ToString("yyyy-MM-dd HH:mm:ss"));
                                 }
 
                                 ImGui.EndTable();
