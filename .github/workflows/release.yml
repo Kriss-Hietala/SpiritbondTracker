@@ -17,9 +17,11 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      # Używamy oficjalnej akcji konfiguracyjnej Dalamuda, która obsługuje repozytoria NuGet
-      - name: Set up Dalamud SDK
-        uses: xivdev/setup-dalamud@v1
+      # Ręczne dodanie i wymuszenie źródeł NuGet w środowisku GitHub Actions
+      - name: Configure NuGet Sources
+        run: |
+          dotnet nuget add source https://api.nuget.org/v3/index.json -n nuget.org || true
+          dotnet nuget add source https://nuget.dalamud.dev/v3/index.json -n dalamud || true
 
       - name: Build project
         run: dotnet build SpiritbondTracker.csproj -c Release
