@@ -1,14 +1,21 @@
-<Project Sdk="Dalamud.NET.Sdk/15.0.0">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>SpiritbondTracker</AssemblyName>
     <RootNamespace>SpiritbondTracker</RootNamespace>
+    <!-- Enable Dalamud.NET.Sdk features only when Dalamud is installed (local dev) -->
+    <UseDalamudSdk Condition="'$(DALAMUD_PATH)' != ''">true</UseDalamudSdk>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Lumina.Excel" Version="7.5.0" />
+    <PackageReference Include="Dalamud.NET.Sdk" Version="15.0.0" Condition="'$(UseDalamudSdk)' == 'true'" PrivateAssets="all" />
     <PackageReference Include="Lumina" Version="7.6.1" />
+    <PackageReference Include="Lumina.Excel" Version="7.5.0" />
+    <PackageReference Include="DalamudPackager" Version="15.0.0" Condition="'$(UseDalamudSdk)' != 'true'" PrivateAssets="all" />
   </ItemGroup>
+
+  <!-- Import Dalamud.NET.Sdk targets only when explicitly enabled -->
+  <Import Project="Dalamud.NET.Sdk.targets" Condition="'$(UseDalamudSdk)' == 'true' And Exists('$(NuGetPackageRoot)dalamud.net.sdk\15.0.0\Sdk\Sdk.targets')" />
 </Project>
