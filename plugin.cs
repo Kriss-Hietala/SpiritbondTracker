@@ -12,7 +12,7 @@ using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
 
-// Poprawne przestrzenie nazw dla Lumina 7 / Dalamud v15
+// Compatible namespaces for Lumina 7 / Dalamud v15
 using Lumina.Excel.Sheets;
 using ItemRow = Lumina.Excel.Sheets.Item;
 using TerritoryRow = Lumina.Excel.Sheets.TerritoryType;
@@ -192,7 +192,6 @@ public class SettingsWindow : Window
     {
         bool changed = false;
 
-        // --- GŁÓWNY WIDOK ---
         if (ImGui.CollapsingHeader("Display & Layout", ImGuiTreeNodeFlags.DefaultOpen))
         {
             bool compactMode = config.CompactMode;
@@ -216,7 +215,6 @@ public class SettingsWindow : Window
             ImGui.Spacing();
         }
 
-        // --- AUTOMATYCZNE UKRYWANIE ---
         if (ImGui.CollapsingHeader("Smart Hide Conditions"))
         {
             bool hideInCutscenes = config.HideInCutscenes;
@@ -231,7 +229,6 @@ public class SettingsWindow : Window
             ImGui.Spacing();
         }
 
-        // --- ALERTY I POWIADOMIENIA ---
         if (ImGui.CollapsingHeader("Alerts & Notifications"))
         {
             bool sendChatNotification = config.SendChatNotification;
@@ -243,7 +240,6 @@ public class SettingsWindow : Window
             ImGui.Spacing();
         }
 
-        // --- WYGLĄD I MOTYWY ---
         if (ImGui.CollapsingHeader("Appearance & Themes"))
         {
             bool highContrastMode = config.HighContrastMode;
@@ -278,7 +274,6 @@ public class SettingsWindow : Window
             ImGui.Spacing();
         }
 
-        // --- WYDAJNOŚĆ I HISTORIA ---
         if (ImGui.CollapsingHeader("Performance & History"))
         {
             bool ecoMode = config.EcoMode;
@@ -341,15 +336,20 @@ public class SpiritbondWindow : Window
 
     private Dictionary<int, bool> notifiedCappedSlots = new();
 
-    // Cache wydajnościowe
     private List<GearDisplayInfo> cachedGearList = new();
     private DateTime lastGearRefresh = DateTime.MinValue;
     private readonly Dictionary<uint, (string Name, uint ItemLevel)> itemDataCache = new();
+
     private bool cachedHasPotionBuff = false;
-    private bool cachedHasManualOrFcBuff = false;
+    private bool cachedHasManualBuff = false;
+    private bool cachedHasFcBuff = false;
+    private bool cachedHasFoodBuff = false;
     private bool cachedExpiringBuff = false;
+    private float cachedPotionRemaining = 0f;
+    private float cachedManualRemaining = 0f;
     private float cachedAvgIvl = 0f;
     private int cachedCappedCount = 0;
+    private List<string> debugDetectedStatuses = new();
 
     private static readonly (int Index, string Name, string Category)[] Slots =
     {
@@ -370,6 +370,7 @@ public class SpiritbondWindow : Window
     private Dictionary<int, ushort> dutyStartSpiritbond = new();
     private Dictionary<int, ushort> previousSlotSpiritbond = new();
     private string lastTrackedDuty = string.Empty;
+    private string currentSessionId = string.Empty;
 
     public class GearDisplayInfo
     {
@@ -415,6 +416,7 @@ public class SpiritbondWindow : Window
 
     public class HistoryRecord
     {
+        public string SessionId { get; set; } = string.Empty;
         public string DutyName { get; set; } = string.Empty;
         public string ItemName { get; set; } = string.Empty;
         public string Category { get; set; } = string.Empty;
@@ -492,10 +494,10 @@ public class SpiritbondWindow : Window
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
             string csvPath = Path.Combine(dir, "spiritbond_export.csv");
             using var writer = new StreamWriter(csvPath);
-            writer.WriteLine("DutyName,ItemName,Category,JobName,ItemLevel,GainedPercent,Timestamp");
+            writer.WriteLine("SessionId,DutyName,ItemName,Category,JobName,ItemLevel,GainedPercent,Timestamp");
             foreach (var h in completedHistory)
             {
-                writer.WriteLine($"\"{h.DutyName}\",\"{h.ItemName}\",\"{h.Category}\",\"{h.JobName}\",{h.ItemLevel},{h.Gained:F2},{h.Timestamp:yyyy-MM-dd HH:mm:ss}");
+                writer.WriteLine($"\"{h.SessionId}\",\"{h.DutyName}\",\"{h.ItemName}\",\"{h.Category}\",\"{h.JobName}\",{h.ItemLevel},{h.Gained:F2},{h.Timestamp:yyyy-MM-dd HH:mm:ss}");
             }
 
             chatGui.Print($"[Spiritbond Tracker] History exported successfully to: {csvPath}");
@@ -568,13 +570,15 @@ public class SpiritbondWindow : Window
             currentDutyLevel = 0;
         }
 
-        if (lastTrackedDuty != currentDutyName)
+        string sessionKey = $"{currentDutyName}_{inDuty}_{territoryId}";
+        if (lastTrackedDuty != sessionKey)
         {
             SaveSessionToHistory();
             dutyStartSpiritbond.Clear();
             previousSlotSpiritbond.Clear();
             notifiedCappedSlots.Clear();
-            lastTrackedDuty = currentDutyName;
+            lastTrackedDuty = sessionKey;
+            currentSessionId = $"{currentDutyName} ({DateTime.Now:yyyy-MM-dd HH:mm:ss})";
         }
 
         foreach (var slot in Slots)
@@ -602,7 +606,7 @@ public class SpiritbondWindow : Window
             }
         }
 
-        // Aktualizacja danych co 250 ms
+        // Update loop running every 250 ms
         if ((DateTime.UtcNow - lastGearRefresh).TotalMilliseconds >= 250)
         {
             cachedGearList = GetCurrentGearList();
@@ -610,8 +614,13 @@ public class SpiritbondWindow : Window
             cachedAvgIvl = GetAverageEquippedItemLevel();
 
             cachedHasPotionBuff = false;
-            cachedHasManualOrFcBuff = false;
+            cachedHasManualBuff = false;
+            cachedHasFcBuff = false;
+            cachedHasFoodBuff = false;
             cachedExpiringBuff = false;
+            cachedPotionRemaining = 0f;
+            cachedManualRemaining = 0f;
+            debugDetectedStatuses.Clear();
 
             if (objectTable.LocalPlayer != null)
             {
@@ -622,25 +631,51 @@ public class SpiritbondWindow : Window
                     {
                         if (status.StatusId == 0) continue;
                         var row = statusSheet.GetRowOrDefault(status.StatusId);
-                        if (row.HasValue)
+                        if (!row.HasValue) continue;
+
+                        string bName = row.Value.Name.ToString();
+                        string bDesc = row.Value.Description.ToString();
+                        string bNameLower = bName.ToLowerInvariant();
+                        string bDescLower = bDesc.ToLowerInvariant();
+
+                        // Keep the complete status list visible for diagnostics.
+                        debugDetectedStatuses.Add($"Raw: '{bName}' (ID: {status.StatusId}, Rem: {(int)(status.RemainingTime / 60)}m)");
+
+                        // 1. Food (Well Fed with spiritbond bonus)
+                        if (bNameLower.Contains("well fed") && (bDescLower.Contains("spiritbond") || bDescLower.Contains("spiritbonding")))
                         {
-                            string bNameLower = row.Value.Name.ToString().ToLower();
-                            string bDescLower = row.Value.Description.ToString().ToLower();
+                            cachedHasFoodBuff = true;
+                            debugDetectedStatuses.Add($"Food: '{bName}' (ID: {status.StatusId})");
+                        }
+                        // 2. Free Company Action (That Which Binds Us)
+                        else if (bNameLower.Contains("that which binds us") || 
+                                 (bDescLower.Contains("spiritbond") && (bNameLower.Contains("company") || bNameLower.Contains("inspirational"))))
+                        {
+                            cachedHasFcBuff = true;
+                            debugDetectedStatuses.Add($"FC: '{bName}' (ID: {status.StatusId})");
+                        }
+                        // 3. Squadron / Commercial Manual
+                        else if (bNameLower.Contains("manual") || bDescLower.Contains("speed is increased") || status.StatusId == 1003)
+                        {
+                            cachedHasManualBuff = true;
+                            cachedManualRemaining = status.RemainingTime;
+                            debugDetectedStatuses.Add($"Manual: '{bName}' (ID: {status.StatusId}, Rem: {(int)(status.RemainingTime / 60)}m)");
 
-                            if (config.WarnExpiringBuffs && status.RemainingTime > 0 && status.RemainingTime < 120f)
+                            if (config.WarnExpiringBuffs && status.RemainingTime > 0f && status.RemainingTime < 120f)
                             {
-                                if (bNameLower.Contains("spiritbond") || bDescLower.Contains("spiritbond") || status.StatusId == 450 || status.StatusId == 49)
-                                {
-                                    cachedExpiringBuff = true;
-                                }
+                                cachedExpiringBuff = true;
                             }
+                        }
+                        // Spiritbond potions apply the generic Medicated status. Use its stable ID, not a localized name.
+                        else if (status.StatusId == 49)
+                        {
+                            cachedHasPotionBuff = true;
+                            cachedPotionRemaining = status.RemainingTime;
+                            debugDetectedStatuses.Add($"Spiritbond potion / Medicated: '{bName}' (ID: {status.StatusId}, Rem: {(int)(status.RemainingTime / 60)}m)");
 
-                            if (bNameLower.Contains("spiritbond") || bDescLower.Contains("spiritbond") || status.StatusId == 49 || status.StatusId == 1003 || status.StatusId == 450)
+                            if (config.WarnExpiringBuffs && status.RemainingTime > 0f && status.RemainingTime < 120f)
                             {
-                                if (bNameLower.Contains("superior") || bNameLower.Contains("potion") || bDescLower.Contains("potion") || status.StatusId == 450)
-                                    cachedHasPotionBuff = true;
-                                else
-                                    cachedHasManualOrFcBuff = true;
+                                cachedExpiringBuff = true;
                             }
                         }
                     }
@@ -663,7 +698,7 @@ public class SpiritbondWindow : Window
 
     public unsafe void SaveSessionToHistory()
     {
-        if (string.IsNullOrEmpty(lastTrackedDuty) || lastTrackedDuty == "Overworld / Field Ops") return;
+        if (string.IsNullOrEmpty(currentSessionId) || currentDutyName.Contains("Overworld")) return;
         if (dutyStartSpiritbond.Count == 0) return;
 
         var inventoryManager = InventoryManager.Instance();
@@ -711,7 +746,8 @@ public class SpiritbondWindow : Window
 
                     completedHistory.Add(new HistoryRecord
                     {
-                        DutyName = lastTrackedDuty,
+                        SessionId = currentSessionId,
+                        DutyName = currentDutyName,
                         ItemName = cachedData.Name,
                         Category = slot.Category,
                         JobName = currentJobName,
@@ -1098,17 +1134,98 @@ public class SpiritbondWindow : Window
         if (config.ShowBuffSynergy)
         {
             ImGui.BeginChild("BuffCard", new Vector2(0, 42), true, ImGuiWindowFlags.NoScrollbar);
-            if (cachedHasPotionBuff && cachedHasManualOrFcBuff)
-                ImGui.TextColored(config.HighContrastMode ? new Vector4(0.0f, 1.0f, 0.0f, 1.0f) : new Vector4(0.2f, 1.0f, 0.2f, 1.0f), "✨ Buff Synergy: MAXIMIZED (Full Bonus Active)");
-            else if (cachedHasPotionBuff || cachedHasManualOrFcBuff)
-                ImGui.TextColored(config.HighContrastMode ? new Vector4(1.0f, 1.0f, 0.0f, 1.0f) : new Vector4(1.0f, 0.8f, 0.2f, 1.0f), "⚡ Buff Synergy: PARTIAL (Add missing buff!)");
+            
+            bool hasConsumable = cachedHasPotionBuff || cachedHasManualBuff;
+
+            if (hasConsumable && cachedHasFcBuff)
+            {
+                ImGui.TextColored(config.HighContrastMode ? new Vector4(0.0f, 1.0f, 0.0f, 1.0f) : new Vector4(0.2f, 1.0f, 0.2f, 1.0f), 
+                    cachedHasFoodBuff ? "✨ Synergy: FULL (Consumable + FC + Food)" : "✨ Synergy: MAX (Consumable + FC)");
+            }
+            else if (hasConsumable)
+            {
+                ImGui.TextColored(config.HighContrastMode ? new Vector4(0.0f, 1.0f, 0.0f, 1.0f) : new Vector4(0.2f, 1.0f, 0.4f, 1.0f), "✨ Synergy: OPTIMAL (Consumable Active)");
+            }
+            else if (cachedHasFcBuff)
+            {
+                ImGui.TextColored(config.HighContrastMode ? new Vector4(1.0f, 1.0f, 0.0f, 1.0f) : new Vector4(1.0f, 0.8f, 0.2f, 1.0f), "⚡ Synergy: PARTIAL (Missing Potion / Manual)");
+            }
             else
-                ImGui.TextColored(config.HighContrastMode ? new Vector4(1.0f, 0.0f, 0.0f, 1.0f) : new Vector4(1.0f, 0.2f, 0.2f, 1.0f), "❌ Buff Synergy: NONE (Use Potion + Manual/FC!)");
+            {
+                ImGui.TextColored(config.HighContrastMode ? new Vector4(1.0f, 0.0f, 0.0f, 1.0f) : new Vector4(1.0f, 0.2f, 0.2f, 1.0f), "❌ Synergy: NONE");
+            }
+
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.BeginTooltip();
+                ImGui.Text("Spiritbond Buff Status:");
+                ImGui.Separator();
+                string potTime = cachedHasPotionBuff ? $"({(int)(cachedPotionRemaining / 60)}m left)" : "";
+                string manTime = cachedHasManualBuff ? $"({(int)(cachedManualRemaining / 60)}m left)" : "";
+                ImGui.TextColored(cachedHasPotionBuff ? new Vector4(0, 1, 0, 1) : new Vector4(1, 0, 0, 1), $"• Potion (Medicated; Spiritbond assumed): {(cachedHasPotionBuff ? $"Active {potTime}" : "Missing")}");
+                ImGui.TextColored(cachedHasFcBuff ? new Vector4(0, 1, 0, 1) : new Vector4(1, 0, 0, 1), $"• FC Buff (Company Action): {(cachedHasFcBuff ? "Active (+1 to +3)" : "Missing")}");
+                ImGui.TextColored(cachedHasManualBuff ? new Vector4(0, 1, 0, 1) : new Vector4(0.7f, 0.7f, 0.7f, 1), $"• Manual (Squadron): {(cachedHasManualBuff ? $"Active {manTime}" : "None")}");
+                ImGui.TextColored(cachedHasFoodBuff ? new Vector4(0, 1, 0, 1) : new Vector4(0.7f, 0.7f, 0.7f, 1), $"• Food (Optional): {(cachedHasFoodBuff ? "Active (+2)" : "None")}");
+                
+                ImGui.Separator();
+                ImGui.TextDisabled("Detected Raw Statuses:");
+                if (debugDetectedStatuses.Count > 0)
+                {
+                    foreach (var dbg in debugDetectedStatuses)
+                    {
+                        ImGui.TextDisabled($"  > {dbg}");
+                    }
+                }
+                else
+                {
+                    ImGui.TextDisabled("  > None detected on player");
+                }
+
+                ImGui.EndTooltip();
+            }
 
             if (cachedExpiringBuff)
             {
                 ImGui.SameLine();
-                ImGui.TextColored(new Vector4(1.0f, 0.3f, 0.3f, 1.0f), "⚠️ Expiring soon (< 2m)!");
+                ImGui.TextColored(new Vector4(1.0f, 0.3f, 0.3f, 1.0f), "⚠️ Expiring (< 2m)!");
+            }
+
+            // Single Smart Action Button
+            bool needsPotion = !cachedHasPotionBuff || cachedPotionRemaining < 600f;
+            bool needsManual = !cachedHasManualBuff || cachedManualRemaining < 600f;
+            bool canUseAny = needsPotion || needsManual;
+
+            ImGui.SameLine();
+            if (!canUseAny)
+            {
+                ImGui.BeginDisabled();
+                ImGui.SmallButton("✔️ Buffs Active (>10m)");
+                ImGui.EndDisabled();
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("All Spiritbond consumables have more than 10 minutes remaining.");
+            }
+            else
+            {
+                string btnLabel = needsPotion ? "🧪 Apply Potion" : "📖 Apply Manual";
+                if (needsPotion && needsManual) btnLabel = "⚡ Apply All Buffs";
+
+                if (ImGui.SmallButton(btnLabel))
+                {
+                    if (needsPotion)
+                    {
+                        commandManager.ProcessCommand("/item \"Superior Spiritbonding Potion\"");
+                    }
+                    if (needsManual)
+                    {
+                        commandManager.ProcessCommand("/item \"Squadron Spiritbonding Manual\"");
+                    }
+                }
+
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetTooltip($"Uses missing/expiring items (< 10m):\n" +
+                                     $"- Potion: {(needsPotion ? "Needs refresh" : "Protected (>10m)")}\n" +
+                                     $"- Manual: {(needsManual ? "Needs refresh" : "Protected (>10m)")}");
+                }
             }
 
             ImGui.EndChild();
@@ -1290,13 +1407,14 @@ public class SpiritbondWindow : Window
                     filteredRecords = filteredRecords.Where(h => h.Category.Equals(historyCategoryFilter, StringComparison.OrdinalIgnoreCase));
                 }
 
-                var grouped = filteredRecords.GroupBy(h => h.DutyName).OrderByDescending(g => g.Max(x => x.Timestamp));
+                var grouped = filteredRecords.GroupBy(h => h.SessionId).OrderByDescending(g => g.Max(x => x.Timestamp));
                 foreach (var group in grouped)
                 {
                     float totalGroupGain = group.Sum(x => x.Gained);
+                    string dutyTitle = group.First().DutyName;
                     string sessionDate = group.First().Timestamp.ToString("yyyy-MM-dd HH:mm");
                     string jobUsed = group.First().JobName;
-                    string cardHeader = $"[Duty] {group.Key} ({jobUsed}) --> Total Gain: +{totalGroupGain:F2}% ({sessionDate})";
+                    string cardHeader = $"[Duty] {dutyTitle} ({jobUsed}) --> Total Gain: +{totalGroupGain:F2}% ({sessionDate})";
 
                     if (config.HistoryViewMode == 0)
                     {
@@ -1315,7 +1433,7 @@ public class SpiritbondWindow : Window
                         if (ImGui.CollapsingHeader(cardHeader, ImGuiTreeNodeFlags.DefaultOpen))
                         {
                             ImGui.Indent(10f);
-                            ImGui.TextColored(new Vector4(0.8f, 0.8f, 0.8f, 1.0f), $"Items progressed in this duty as [{jobUsed}]:");
+                            ImGui.TextColored(new Vector4(0.8f, 0.8f, 0.8f, 1.0f), $"Items progressed in this entry as [{jobUsed}]:");
 
                             const float dateColumnWidth = 145f;
 
@@ -1393,14 +1511,14 @@ public class SpiritbondWindow : Window
 
                 var topDuty = completedHistory
                     .GroupBy(h => h.DutyName)
-                    .Select(g => new { Duty = g.Key, TotalGain = g.Sum(x => x.Gained), SessionsCount = g.Select(x => x.Timestamp.Date).Distinct().Count() })
+                    .Select(g => new { Duty = g.Key, TotalGain = g.Sum(x => x.Gained), SessionsCount = g.Select(x => x.SessionId).Distinct().Count() })
                     .OrderByDescending(x => x.TotalGain)
                     .FirstOrDefault();
 
                 if (topDuty != null)
                 {
                     ImGui.Text($"Top Yielding Duty (History): "); ImGui.SameLine();
-                    ImGui.TextColored(accentColor, $"{topDuty.Duty} (Total: +{topDuty.TotalGain:F2}% across {topDuty.SessionsCount} sessions)");
+                    ImGui.TextColored(accentColor, $"{topDuty.Duty} (Total: +{topDuty.TotalGain:F2}% across {topDuty.SessionsCount} runs)");
                 }
                 else
                 {
