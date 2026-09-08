@@ -27,6 +27,7 @@ public sealed class Plugin : IDalamudPlugin
     public readonly WindowSystem WindowSystem;
     private readonly SpiritbondWindow mainWindow;
     private readonly SettingsWindow settingsWindow;
+    public readonly PluginConfig Config;
 
     public Plugin(
         IDalamudPluginInterface pluginInterface,
@@ -59,9 +60,9 @@ public sealed class Plugin : IDalamudPlugin
         {
             config = new PluginConfig();
         }
-
+        this.Config = config;
         this.WindowSystem = new WindowSystem("SpiritbondTracker");
-        this.mainWindow = new SpiritbondWindow(pluginInterface, objectTable, clientState, condition, dataManager, chatGui, config, this);
+        this.mainWindow = new SpiritbondWindow(pluginInterface, commandManager, objectTable, clientState, condition, dataManager, chatGui, config, this);
         this.settingsWindow = new SettingsWindow(pluginInterface, config, this.mainWindow);
 
         this.WindowSystem.AddWindow(this.mainWindow);
@@ -75,6 +76,19 @@ public sealed class Plugin : IDalamudPlugin
         this.pluginInterface.UiBuilder.Draw += DrawUI;
         this.pluginInterface.UiBuilder.OpenMainUi += ToggleMainWindow;
         this.pluginInterface.UiBuilder.OpenConfigUi += ToggleSettingsWindow;
+    }
+
+    public void SaveConfig()
+    {
+        try
+        {
+            string dir = pluginInterface.GetPluginConfigDirectory();
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            string path = Path.Combine(dir, "config.json");
+            string json = JsonSerializer.Serialize(Config, new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(path, json);
+        }
+        catch { }
     }
 
     public void Dispose()
@@ -110,10 +124,17 @@ public sealed class Plugin : IDalamudPlugin
 
 public class PluginConfig
 {
+    public bool HideInCutscenes { get; set; } = true;
+    public bool HideInPvP { get; set; } = true;
+    public bool HideUntilReady { get; set; } = false;
+    public Vector2 CompactWindowSize { get; set; } = new Vector2(260, 260);
+    public Vector2 FullWindowSize { get; set; } = new Vector2(880, 620);
+
+    public bool CompactMode { get; set; } = false;
     public bool ShowBuffSynergy { get; set; } = true;
     public bool ShowEligibilityColumn { get; set; } = true;
     public bool ShowItemLevel { get; set; } = true;
-    public bool PlaySoundNotification { get; set; } = true;
+    public bool SendChatNotification { get; set; } = true;
 
     public bool ShowCappedSlotsCounter { get; set; } = false;
     public bool WarnExpiringBuffs { get; set; } = true;
@@ -136,7 +157,7 @@ public class SettingsWindow : Window
     private readonly SpiritbondWindow mainWindow;
 
     public SettingsWindow(IDalamudPluginInterface pluginInterface, PluginConfig config, SpiritbondWindow mainWindow)
-        : base("Spiritbond Tracker Settings###SpiritbondTrackerSettings", ImGuiWindowFlags.AlwaysAutoResize)
+        : base("Spiritbond Tracker Settings###SpiritbondTrackerSettings")
     {
         this.pluginInterface = pluginInterface;
         this.config = config;
@@ -144,6 +165,14 @@ public class SettingsWindow : Window
 
         this.AllowPinning = true;
         this.AllowClickthrough = true;
+
+        this.Size = new Vector2(380, 520);
+        this.SizeCondition = ImGuiCond.FirstUseEver;
+        this.SizeConstraints = new WindowSizeConstraints
+        {
+            MinimumSize = new Vector2(320, 250),
+            MaximumSize = new Vector2(1000, 1200)
+        };
     }
 
     public void SaveConfig()
@@ -161,82 +190,116 @@ public class SettingsWindow : Window
 
     public override void Draw()
     {
-        ImGui.TextColored(new Vector4(0.4f, 0.8f, 1.0f, 1.0f), "Spiritbond Tracker Customization & Performance");
-        ImGui.Separator();
-        ImGui.Spacing();
-
-        bool showBuffSynergy = config.ShowBuffSynergy;
-        bool showEligibilityColumn = config.ShowEligibilityColumn;
-        bool showItemLevel = config.ShowItemLevel;
-        bool playSoundNotification = config.PlaySoundNotification;
-        bool showCappedSlotsCounter = config.ShowCappedSlotsCounter;
-        bool warnExpiringBuffs = config.WarnExpiringBuffs;
-        bool showDutyAdvisor = config.ShowDutyAdvisor;
-        bool ecoMode = config.EcoMode;
-        bool autoEcoFieldOps = config.AutoEcoFieldOps;
-        bool enableAnimations = config.EnableAnimations;
-        bool highContrastMode = config.HighContrastMode;
-        float uiScale = config.UiScale;
-        int layoutStyleIndex = config.UiLayoutStyleIndex;
-        int themeIndex = config.ColorThemeIndex;
-        int historyViewMode = config.HistoryViewMode;
-
         bool changed = false;
 
-        ImGui.Text("General Visibility & Features:");
-        if (ImGui.Checkbox("Show Buff Synergy Header", ref showBuffSynergy)) { config.ShowBuffSynergy = showBuffSynergy; changed = true; }
-        if (ImGui.Checkbox("Show iLvl Eligibility Column", ref showEligibilityColumn)) { config.ShowEligibilityColumn = showEligibilityColumn; changed = true; }
-        if (ImGui.Checkbox("Show Item Level next to Name", ref showItemLevel)) { config.ShowItemLevel = showItemLevel; changed = true; }
-        if (ImGui.Checkbox("Play Sound / Chat Alert on 100% Capped", ref playSoundNotification)) { config.PlaySoundNotification = playSoundNotification; changed = true; }
-        if (ImGui.Checkbox("Show Capped Slots Counter", ref showCappedSlotsCounter)) { config.ShowCappedSlotsCounter = showCappedSlotsCounter; changed = true; }
-        if (ImGui.Checkbox("Warn about expiring Spiritbond buffs (< 2 mins)", ref warnExpiringBuffs)) { config.WarnExpiringBuffs = warnExpiringBuffs; changed = true; }
-        if (ImGui.Checkbox("Show Smart Duty Advisor (Roulette & Randomizer)", ref showDutyAdvisor)) { config.ShowDutyAdvisor = showDutyAdvisor; changed = true; }
-
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Text("Performance & Animations:");
-        if (ImGui.Checkbox("Enable Eco Mode / Low-Overhead Safe Mode", ref ecoMode)) { config.EcoMode = ecoMode; changed = true; }
-        if (ImGui.Checkbox("Auto-enable Eco Mode in Field Ops (Eureka, Bozja, Occult)", ref autoEcoFieldOps)) { config.AutoEcoFieldOps = autoEcoFieldOps; changed = true; }
-        if (ImGui.Checkbox("Enable UI Animations", ref enableAnimations)) { config.EnableAnimations = enableAnimations; changed = true; }
-
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Text("History UI Style:");
-        string[] historyModes = { "Minimal (Compact list)", "Advanced Cards (Detailed duty & job breakdown)" };
-        ImGui.SetNextItemWidth(250f);
-        if (ImGui.Combo("History Layout", ref historyViewMode, historyModes, historyModes.Length))
+        // --- GŁÓWNY WIDOK ---
+        if (ImGui.CollapsingHeader("Display & Layout", ImGuiTreeNodeFlags.DefaultOpen))
         {
-            config.HistoryViewMode = historyViewMode;
-            changed = true;
+            bool compactMode = config.CompactMode;
+            if (ImGui.Checkbox("Compact Mode (Icon Grid)", ref compactMode)) { config.CompactMode = compactMode; changed = true; }
+
+            bool showBuffSynergy = config.ShowBuffSynergy;
+            if (ImGui.Checkbox("Show Buff Synergy Header", ref showBuffSynergy)) { config.ShowBuffSynergy = showBuffSynergy; changed = true; }
+
+            bool showEligibilityColumn = config.ShowEligibilityColumn;
+            if (ImGui.Checkbox("Show iLvl Eligibility Column", ref showEligibilityColumn)) { config.ShowEligibilityColumn = showEligibilityColumn; changed = true; }
+
+            bool showItemLevel = config.ShowItemLevel;
+            if (ImGui.Checkbox("Show Item Level next to Name", ref showItemLevel)) { config.ShowItemLevel = showItemLevel; changed = true; }
+
+            bool showCappedSlotsCounter = config.ShowCappedSlotsCounter;
+            if (ImGui.Checkbox("Show Capped Slots Counter", ref showCappedSlotsCounter)) { config.ShowCappedSlotsCounter = showCappedSlotsCounter; changed = true; }
+
+            bool showDutyAdvisor = config.ShowDutyAdvisor;
+            if (ImGui.Checkbox("Show Smart Duty Advisor (Roulette & Randomizer)", ref showDutyAdvisor)) { config.ShowDutyAdvisor = showDutyAdvisor; changed = true; }
+
+            ImGui.Spacing();
         }
 
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Text("UI Appearance & Themes:");
-
-        if (ImGui.Checkbox("High Contrast Mode", ref highContrastMode)) { config.HighContrastMode = highContrastMode; changed = true; }
-
-        ImGui.SetNextItemWidth(200f);
-        if (ImGui.SliderFloat("UI Font Scale", ref uiScale, 1.0f, 1.5f, "%.1fx"))
+        // --- AUTOMATYCZNE UKRYWANIE ---
+        if (ImGui.CollapsingHeader("Smart Hide Conditions"))
         {
-            config.UiScale = uiScale;
-            changed = true;
+            bool hideInCutscenes = config.HideInCutscenes;
+            if (ImGui.Checkbox("Hide in Cutscenes", ref hideInCutscenes)) { config.HideInCutscenes = hideInCutscenes; changed = true; }
+
+            bool hideInPvP = config.HideInPvP;
+            if (ImGui.Checkbox("Hide in PvP (Wolves' Den, Frontline)", ref hideInPvP)) { config.HideInPvP = hideInPvP; changed = true; }
+
+            bool hideUntilReady = config.HideUntilReady;
+            if (ImGui.Checkbox("Hide until any gear reaches 100%", ref hideUntilReady)) { config.HideUntilReady = hideUntilReady; changed = true; }
+
+            ImGui.Spacing();
         }
 
-        string[] layouts = { "Modern Dark (Default)", "Classic FF I-VI (Retro RPG)", "Mac OS X (Aquatic Minimal)", "Xbox 360 (Blade & Neon)" };
-        ImGui.SetNextItemWidth(240f);
-        if (ImGui.Combo("UI Element Layout Style", ref layoutStyleIndex, layouts, layouts.Length))
+        // --- ALERTY I POWIADOMIENIA ---
+        if (ImGui.CollapsingHeader("Alerts & Notifications"))
         {
-            config.UiLayoutStyleIndex = layoutStyleIndex;
-            changed = true;
+            bool sendChatNotification = config.SendChatNotification;
+            if (ImGui.Checkbox("Send Chat Alert on 100% Capped", ref sendChatNotification)) { config.SendChatNotification = sendChatNotification; changed = true; }
+
+            bool warnExpiringBuffs = config.WarnExpiringBuffs;
+            if (ImGui.Checkbox("Warn about expiring Spiritbond buffs (< 2 mins)", ref warnExpiringBuffs)) { config.WarnExpiringBuffs = warnExpiringBuffs; changed = true; }
+
+            ImGui.Spacing();
         }
 
-        string[] themes = { "Classic Blue", "Neon Cyan", "Warm Amber", "Matrix Emerald" };
-        ImGui.SetNextItemWidth(240f);
-        if (ImGui.Combo("Color Theme Palette", ref themeIndex, themes, themes.Length))
+        // --- WYGLĄD I MOTYWY ---
+        if (ImGui.CollapsingHeader("Appearance & Themes"))
         {
-            config.ColorThemeIndex = themeIndex;
-            changed = true;
+            bool highContrastMode = config.HighContrastMode;
+            if (ImGui.Checkbox("High Contrast Mode", ref highContrastMode)) { config.HighContrastMode = highContrastMode; changed = true; }
+
+            float uiScale = config.UiScale;
+            ImGui.SetNextItemWidth(200f);
+            if (ImGui.SliderFloat("UI Font Scale", ref uiScale, 1.0f, 1.5f, "%.1fx"))
+            {
+                config.UiScale = uiScale;
+                changed = true;
+            }
+
+            int themeIndex = config.ColorThemeIndex;
+            string[] themes = { "Classic Blue", "Neon Cyan", "Warm Amber", "Matrix Emerald" };
+            ImGui.SetNextItemWidth(200f);
+            if (ImGui.Combo("Color Theme", ref themeIndex, themes, themes.Length))
+            {
+                config.ColorThemeIndex = themeIndex;
+                changed = true;
+            }
+
+            int layoutStyleIndex = config.UiLayoutStyleIndex;
+            string[] layouts = { "Modern Dark (Default)", "Classic FF I-VI (Retro RPG)", "Mac OS X (Aquatic Minimal)", "Xbox 360 (Blade & Neon)" };
+            ImGui.SetNextItemWidth(200f);
+            if (ImGui.Combo("Element Style", ref layoutStyleIndex, layouts, layouts.Length))
+            {
+                config.UiLayoutStyleIndex = layoutStyleIndex;
+                changed = true;
+            }
+
+            ImGui.Spacing();
+        }
+
+        // --- WYDAJNOŚĆ I HISTORIA ---
+        if (ImGui.CollapsingHeader("Performance & History"))
+        {
+            bool ecoMode = config.EcoMode;
+            if (ImGui.Checkbox("Enable Eco Mode / Low-Overhead Safe Mode", ref ecoMode)) { config.EcoMode = ecoMode; changed = true; }
+
+            bool autoEcoFieldOps = config.AutoEcoFieldOps;
+            if (ImGui.Checkbox("Auto-enable Eco Mode in Field Ops (Eureka, Bozja, Occult)", ref autoEcoFieldOps)) { config.AutoEcoFieldOps = autoEcoFieldOps; changed = true; }
+
+            bool enableAnimations = config.EnableAnimations;
+            if (ImGui.Checkbox("Enable UI Animations", ref enableAnimations)) { config.EnableAnimations = enableAnimations; changed = true; }
+
+            int historyViewMode = config.HistoryViewMode;
+            string[] historyModes = { "Minimal (Compact list)", "Advanced Cards (Detailed duty & job breakdown)" };
+            ImGui.SetNextItemWidth(200f);
+            if (ImGui.Combo("History Layout", ref historyViewMode, historyModes, historyModes.Length))
+            {
+                config.HistoryViewMode = historyViewMode;
+                changed = true;
+            }
+
+            ImGui.Spacing();
         }
 
         if (changed)
@@ -244,7 +307,6 @@ public class SettingsWindow : Window
             SaveConfig();
         }
 
-        ImGui.Spacing();
         ImGui.Separator();
         if (ImGui.Button("Close Settings"))
         {
@@ -256,6 +318,7 @@ public class SettingsWindow : Window
 public class SpiritbondWindow : Window
 {
     private readonly IDalamudPluginInterface pluginInterface;
+    private readonly ICommandManager commandManager;
     private readonly IObjectTable objectTable;
     private readonly IClientState clientState;
     private readonly ICondition condition;
@@ -277,6 +340,16 @@ public class SpiritbondWindow : Window
     private bool wasAutoEcoActive = false;
 
     private Dictionary<int, bool> notifiedCappedSlots = new();
+
+    // Cache wydajnościowe
+    private List<GearDisplayInfo> cachedGearList = new();
+    private DateTime lastGearRefresh = DateTime.MinValue;
+    private readonly Dictionary<uint, (string Name, uint ItemLevel)> itemDataCache = new();
+    private bool cachedHasPotionBuff = false;
+    private bool cachedHasManualOrFcBuff = false;
+    private bool cachedExpiringBuff = false;
+    private float cachedAvgIvl = 0f;
+    private int cachedCappedCount = 0;
 
     private static readonly (int Index, string Name, string Category)[] Slots =
     {
@@ -311,6 +384,35 @@ public class SpiritbondWindow : Window
         public Vector4 EligibilityColor = new(0.2f, 1.0f, 0.2f, 1.0f);
     }
 
+    private bool ShouldHideWindow()
+    {
+        if (!clientState.IsLoggedIn || 
+            condition[ConditionFlag.BetweenAreas] || 
+            condition[ConditionFlag.BetweenAreas51])
+        {
+            return true;
+        }
+
+        if (config.HideInCutscenes && (
+            condition[ConditionFlag.OccupiedInCutSceneEvent] || 
+            condition[ConditionFlag.WatchingCutscene78]))
+        {
+            return true;
+        }
+
+        if (config.HideInPvP && clientState.IsPvP)
+        {
+            return true;
+        }
+
+        if (config.HideUntilReady && !cachedGearList.Any(g => g.CurrentPercent >= 100f))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
     public class HistoryRecord
     {
         public string DutyName { get; set; } = string.Empty;
@@ -325,10 +427,20 @@ public class SpiritbondWindow : Window
     private List<HistoryRecord> completedHistory = new();
     private string historyFilePath => Path.Combine(pluginInterface.GetPluginConfigDirectory(), "spiritbond_history.json");
 
-    public SpiritbondWindow(IDalamudPluginInterface pluginInterface, IObjectTable objectTable, IClientState clientState, ICondition condition, IDataManager dataManager, IChatGui chatGui, PluginConfig config, Plugin pluginInstance)
+    public SpiritbondWindow(
+        IDalamudPluginInterface pluginInterface,
+        ICommandManager commandManager,
+        IObjectTable objectTable,
+        IClientState clientState,
+        ICondition condition,
+        IDataManager dataManager,
+        IChatGui chatGui,
+        PluginConfig config,
+        Plugin pluginInstance)
         : base("Spiritbond Tracker###SpiritbondTrackerMain", ImGuiWindowFlags.NoScrollbar)
     {
         this.pluginInterface = pluginInterface;
+        this.commandManager = commandManager;
         this.objectTable = objectTable;
         this.clientState = clientState;
         this.condition = condition;
@@ -340,7 +452,7 @@ public class SpiritbondWindow : Window
         this.AllowPinning = true;
         this.AllowClickthrough = true;
 
-        this.Size = new Vector2(880, 620);
+        this.Size = config.CompactMode ? config.CompactWindowSize : config.FullWindowSize;
         this.SizeCondition = ImGuiCond.FirstUseEver;
 
         LoadHistory();
@@ -480,7 +592,7 @@ public class SpiritbondWindow : Window
                 previousSlotSpiritbond[slot.Index] = currentSb;
             }
 
-            if (currentSb >= 10000 && config.PlaySoundNotification)
+            if (currentSb >= 10000 && config.SendChatNotification)
             {
                 if (!notifiedCappedSlots.TryGetValue(slot.Index, out var notified) || !notified)
                 {
@@ -488,6 +600,64 @@ public class SpiritbondWindow : Window
                     chatGui.Print($"[Spiritbond Tracker] Slot {slot.Name} reached 100% spiritbond! Ready for extraction.");
                 }
             }
+        }
+
+        // Aktualizacja danych co 250 ms
+        if ((DateTime.UtcNow - lastGearRefresh).TotalMilliseconds >= 250)
+        {
+            cachedGearList = GetCurrentGearList();
+            cachedCappedCount = cachedGearList.Count(g => g.CurrentPercent >= 100f);
+            cachedAvgIvl = GetAverageEquippedItemLevel();
+
+            cachedHasPotionBuff = false;
+            cachedHasManualOrFcBuff = false;
+            cachedExpiringBuff = false;
+
+            if (objectTable.LocalPlayer != null)
+            {
+                var statusSheet = dataManager.GetExcelSheet<StatusRow>();
+                if (statusSheet != null)
+                {
+                    foreach (var status in objectTable.LocalPlayer.StatusList)
+                    {
+                        if (status.StatusId == 0) continue;
+                        var row = statusSheet.GetRowOrDefault(status.StatusId);
+                        if (row.HasValue)
+                        {
+                            string bNameLower = row.Value.Name.ToString().ToLower();
+                            string bDescLower = row.Value.Description.ToString().ToLower();
+
+                            if (config.WarnExpiringBuffs && status.RemainingTime > 0 && status.RemainingTime < 120f)
+                            {
+                                if (bNameLower.Contains("spiritbond") || bDescLower.Contains("spiritbond") || status.StatusId == 450 || status.StatusId == 49)
+                                {
+                                    cachedExpiringBuff = true;
+                                }
+                            }
+
+                            if (bNameLower.Contains("spiritbond") || bDescLower.Contains("spiritbond") || status.StatusId == 49 || status.StatusId == 1003 || status.StatusId == 450)
+                            {
+                                if (bNameLower.Contains("superior") || bNameLower.Contains("potion") || bDescLower.Contains("potion") || status.StatusId == 450)
+                                    cachedHasPotionBuff = true;
+                                else
+                                    cachedHasManualOrFcBuff = true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (cachedExpiringBuff && !buffWarningSent && config.WarnExpiringBuffs)
+            {
+                buffWarningSent = true;
+                chatGui.Print("[Spiritbond Tracker] WARNING: One of your Spiritbond buffs is expiring in less than 2 minutes!");
+            }
+            else if (!cachedExpiringBuff)
+            {
+                buffWarningSent = false;
+            }
+
+            lastGearRefresh = DateTime.UtcNow;
         }
     }
 
@@ -530,17 +700,22 @@ public class SpiritbondWindow : Window
                 int diff = currentSb - startSb;
                 if (diff > 0)
                 {
-                    var excelItem = dataManager.GetExcelSheet<ItemRow>()?.GetRowOrDefault(item->ItemId);
-                    string realItemName = excelItem.HasValue ? excelItem.Value.Name.ToString() : $"Unknown ({item->ItemId})";
-                    uint itemLevel = excelItem.HasValue ? excelItem.Value.LevelItem.RowId : 0;
+                    if (!itemDataCache.TryGetValue(item->ItemId, out var cachedData))
+                    {
+                        var excelItem = dataManager.GetExcelSheet<ItemRow>()?.GetRowOrDefault(item->ItemId);
+                        string realName = excelItem.HasValue ? excelItem.Value.Name.ToString() : $"Unknown ({item->ItemId})";
+                        uint iLvl = excelItem.HasValue ? excelItem.Value.LevelItem.RowId : 0;
+                        cachedData = (realName, iLvl);
+                        itemDataCache[item->ItemId] = cachedData;
+                    }
 
                     completedHistory.Add(new HistoryRecord
                     {
                         DutyName = lastTrackedDuty,
-                        ItemName = realItemName,
+                        ItemName = cachedData.Name,
                         Category = slot.Category,
                         JobName = currentJobName,
-                        ItemLevel = itemLevel,
+                        ItemLevel = cachedData.ItemLevel,
                         Gained = diff / 100f,
                         Timestamp = DateTime.Now
                     });
@@ -570,14 +745,17 @@ public class SpiritbondWindow : Window
 
             ushort currentSb = (ushort)item->SpiritbondOrCollectability;
             ushort startSb = dutyStartSpiritbond.TryGetValue(slot.Index, out var sb) ? sb : currentSb;
-            int diff = currentSb - startSb;
-            if (diff < 0) diff = 0;
-
+            int diff = Math.Max(0, currentSb - startSb);
             float gainedInDuty = diff / 100f;
 
-            var excelItem = dataManager.GetExcelSheet<ItemRow>()?.GetRowOrDefault(item->ItemId);
-            string realItemName = excelItem.HasValue ? excelItem.Value.Name.ToString() : $"Unknown ({item->ItemId})";
-            uint itemLevel = excelItem.HasValue ? excelItem.Value.LevelItem.RowId : 0;
+            if (!itemDataCache.TryGetValue(item->ItemId, out var cachedData))
+            {
+                var excelItem = dataManager.GetExcelSheet<ItemRow>()?.GetRowOrDefault(item->ItemId);
+                string realName = excelItem.HasValue ? excelItem.Value.Name.ToString() : $"Unknown ({item->ItemId})";
+                uint iLvl = excelItem.HasValue ? excelItem.Value.LevelItem.RowId : 0;
+                cachedData = (realName, iLvl);
+                itemDataCache[item->ItemId] = cachedData;
+            }
 
             string eligibility = "Optimal";
             Vector4 eligColor = config.HighContrastMode ? new Vector4(0.0f, 1.0f, 0.0f, 1.0f) : new Vector4(0.2f, 1.0f, 0.2f, 1.0f);
@@ -589,12 +767,12 @@ public class SpiritbondWindow : Window
             }
             else if (currentDutyLevel > 0)
             {
-                if (itemLevel > currentDutyLevel + 50)
+                if (cachedData.ItemLevel > currentDutyLevel + 50)
                 {
                     eligibility = "Too High";
                     eligColor = config.HighContrastMode ? new Vector4(1.0f, 0.0f, 0.0f, 1.0f) : new Vector4(1.0f, 0.2f, 0.2f, 1.0f);
                 }
-                else if (itemLevel > currentDutyLevel + 25)
+                else if (cachedData.ItemLevel > currentDutyLevel + 25)
                 {
                     eligibility = "Reduced";
                     eligColor = config.HighContrastMode ? new Vector4(1.0f, 1.0f, 0.0f, 1.0f) : new Vector4(1.0f, 0.8f, 0.2f, 1.0f);
@@ -606,8 +784,8 @@ public class SpiritbondWindow : Window
                 SlotIndex = slot.Index,
                 SlotName = slot.Name,
                 Category = slot.Category,
-                ItemName = realItemName,
-                ItemLevel = itemLevel,
+                ItemName = cachedData.Name,
+                ItemLevel = cachedData.ItemLevel,
                 CurrentPercent = currentSb / 100f,
                 GainedInDuty = gainedInDuty,
                 Eligibility = eligibility,
@@ -633,12 +811,17 @@ public class SpiritbondWindow : Window
             var item = equippedContainer->GetInventorySlot(slot.Index);
             if (item == null || item->ItemId == 0) continue;
 
-            var excelItem = dataManager.GetExcelSheet<ItemRow>()?.GetRowOrDefault(item->ItemId);
-            if (excelItem.HasValue)
+            if (!itemDataCache.TryGetValue(item->ItemId, out var cachedData))
             {
-                totalIvl += excelItem.Value.LevelItem.RowId;
-                count++;
+                var excelItem = dataManager.GetExcelSheet<ItemRow>()?.GetRowOrDefault(item->ItemId);
+                string realName = excelItem.HasValue ? excelItem.Value.Name.ToString() : $"Unknown ({item->ItemId})";
+                uint iLvl = excelItem.HasValue ? excelItem.Value.LevelItem.RowId : 0;
+                cachedData = (realName, iLvl);
+                itemDataCache[item->ItemId] = cachedData;
             }
+
+            totalIvl += cachedData.ItemLevel;
+            count++;
         }
 
         return count > 0 ? (float)totalIvl / count : 0f;
@@ -683,7 +866,131 @@ public class SpiritbondWindow : Window
     private string currentDutyName = "Not in duty";
     private bool inDuty = false;
 
-   public override void Draw()
+    private static FontAwesomeIcon GetSlotIcon(int slotIndex) => slotIndex switch
+    {
+        0 => FontAwesomeIcon.Gavel,
+        1 => FontAwesomeIcon.ShieldAlt,
+        2 => FontAwesomeIcon.HardHat,
+        3 => FontAwesomeIcon.Tshirt,
+        4 => FontAwesomeIcon.Mitten,
+        6 => FontAwesomeIcon.UserInjured,
+        7 => FontAwesomeIcon.ShoePrints,
+        8 => FontAwesomeIcon.AssistiveListeningSystems,
+        9 => FontAwesomeIcon.Gem,
+        10 => FontAwesomeIcon.CircleNotch,
+        11 => FontAwesomeIcon.Ring,
+        12 => FontAwesomeIcon.Ring,
+        _ => FontAwesomeIcon.Cubes
+    };
+
+    private void DrawCompactUI(Vector4 accentColor, float fontScale)
+    {
+        var gearList = cachedGearList;
+
+        ImGui.TextColored(cachedCappedCount > 0 ? new Vector4(0.0f, 1.0f, 0.5f, 1.0f) : accentColor, $"Ready: {cachedCappedCount}/{gearList.Count}");
+        ImGui.SameLine();
+        if (ImGui.SmallButton("Extract##CompactExtract"))
+        {
+            unsafe
+            {
+                var am = ActionManager.Instance();
+                if (am != null)
+                {
+                    am->UseAction(ActionType.GeneralAction, 14);
+                }
+            }
+        }
+
+        ImGui.Separator();
+
+        var leftSide = gearList.Where(g => g.Category == "Weapon" || g.Category == "Armor").ToList();
+        var rightSide = gearList.Where(g => g.Category == "Accessory").ToList();
+
+        if (ImGui.BeginTable("CompactGearGrid", 2, ImGuiTableFlags.None))
+        {
+            ImGui.TableSetupColumn("LeftGear", ImGuiTableColumnFlags.WidthStretch);
+            ImGui.TableSetupColumn("RightGear", ImGuiTableColumnFlags.WidthStretch);
+
+            int rows = Math.Max(leftSide.Count, rightSide.Count);
+
+            for (int i = 0; i < rows; i++)
+            {
+                ImGui.TableNextRow();
+
+                ImGui.TableNextColumn();
+                if (i < leftSide.Count)
+                {
+                    DrawCompactSlotItem(leftSide[i], accentColor, fontScale);
+                }
+
+                ImGui.TableNextColumn();
+                if (i < rightSide.Count)
+                {
+                    DrawCompactSlotItem(rightSide[i], accentColor, fontScale);
+                }
+            }
+
+            ImGui.EndTable();
+        }
+    }
+
+    private void DrawCompactSlotItem(GearDisplayInfo gear, Vector4 accentColor, float fontScale)
+    {
+        ImGui.PushFont(UiBuilder.IconFont);
+        ImGui.Text(GetSlotIcon(gear.SlotIndex).ToIconString());
+        ImGui.PopFont();
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip($"{gear.SlotName}: {gear.ItemName} (i{gear.ItemLevel})\nGain: +{gear.GainedInDuty:F2}%\nStatus: {gear.Eligibility}");
+        }
+
+        ImGui.SameLine();
+
+        float progress = Math.Clamp(gear.CurrentPercent / 100f, 0.0f, 1.0f);
+        Vector4 barColor = gear.CurrentPercent >= 100f
+            ? (config.HighContrastMode ? new Vector4(1f, 1f, 0f, 1f) : new Vector4(0.2f, 0.9f, 0.2f, 1.0f))
+            : accentColor;
+
+        string overlay = $"{gear.CurrentPercent:F0}%";
+        if (gear.GainedInDuty > 0f) overlay += $" (+{gear.GainedInDuty:F1}%)";
+
+        Vector2 barPos = ImGui.GetCursorScreenPos();
+        Vector2 barSize = new Vector2(ImGui.GetContentRegionAvail().X, 16f * fontScale);
+
+        ImGui.PushStyleColor(ImGuiCol.PlotHistogram, barColor);
+        ImGui.ProgressBar(progress, barSize, "");
+        ImGui.PopStyleColor();
+
+        Vector2 textSize = ImGui.CalcTextSize(overlay);
+        Vector2 textPos = new Vector2(
+            barPos.X + 6.0f,
+            barPos.Y + (barSize.Y - textSize.Y) * 0.5f
+        );
+
+        uint textColor = progress >= 0.18f
+            ? ImGui.GetColorU32(new Vector4(0.02f, 0.02f, 0.02f, 1.0f))
+            : ImGui.GetColorU32(new Vector4(1.0f, 1.0f, 1.0f, 1.0f));
+
+        var drawList = ImGui.GetWindowDrawList();
+        drawList.AddText(textPos, textColor, overlay);
+        drawList.AddText(new Vector2(textPos.X + 0.5f, textPos.Y), textColor, overlay);
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip($"{gear.SlotName}: {gear.ItemName}\nSpiritbond: {gear.CurrentPercent:F2}%\nGain in Duty: +{gear.GainedInDuty:F2}%");
+        }
+    }
+
+    public override bool DrawConditions()
+    {
+        if (ShouldHideWindow())
+            return false;
+
+        return base.DrawConditions();
+    }
+
+    public override void Draw()
     {
         if (config.UiScale > 1.0f)
         {
@@ -763,66 +1070,42 @@ public class SpiritbondWindow : Window
         ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(headerColor.X + 0.15f, headerColor.Y + 0.15f, headerColor.Z + 0.15f, 1.0f));
         ImGui.PushStyleColor(ImGuiCol.ButtonActive, accentColor with { W = 1.0f });
 
+        string modeLabel = config.CompactMode ? "🗖 Expand" : "🗕 Compact";
+        if (ImGui.Button(modeLabel))
+        {
+            if (config.CompactMode)
+                config.CompactWindowSize = ImGui.GetWindowSize();
+            else
+                config.FullWindowSize = ImGui.GetWindowSize();
+
+            config.CompactMode = !config.CompactMode;
+
+            var targetSize = config.CompactMode 
+                ? new Vector2(Math.Max(config.CompactWindowSize.X, 240), Math.Max(config.CompactWindowSize.Y, 260))
+                : config.FullWindowSize;
+
+            ImGui.SetWindowSize(targetSize);
+            pluginInstance.SaveConfig();
+        }
+
+        if (config.CompactMode)
+        {
+            DrawCompactUI(accentColor, fontScale);
+            ImGui.PopStyleColor(6);
+            return;
+        }
+
         if (config.ShowBuffSynergy)
         {
-            bool hasPotionBuff = false;
-            bool hasManualOrFcBuff = false;
-            bool expiringBuffDetected = false;
-
-            if (objectTable.LocalPlayer != null)
-            {
-                var statusSheet = dataManager.GetExcelSheet<StatusRow>();
-                if (statusSheet != null)
-                {
-                    foreach (var status in objectTable.LocalPlayer.StatusList)
-                    {
-                        if (status.StatusId == 0) continue;
-                        var row = statusSheet.GetRowOrDefault(status.StatusId);
-                        if (row.HasValue)
-                        {
-                            string bName = row.Value.Name.ToString();
-                            string bNameLower = bName.ToLower();
-                            string bDescLower = row.Value.Description.ToString().ToLower();
-
-                            if (config.WarnExpiringBuffs && status.RemainingTime > 0 && status.RemainingTime < 120f)
-                            {
-                                if (bNameLower.Contains("spiritbond") || bDescLower.Contains("spiritbond") || status.StatusId == 450 || status.StatusId == 49)
-                                {
-                                    expiringBuffDetected = true;
-                                }
-                            }
-
-                            if (bNameLower.Contains("spiritbond") || bDescLower.Contains("spiritbond") || status.StatusId == 49 || status.StatusId == 1003 || status.StatusId == 450)
-                            {
-                                if (bNameLower.Contains("superior") || bNameLower.Contains("potion") || bDescLower.Contains("potion") || status.StatusId == 450)
-                                    hasPotionBuff = true;
-                                else
-                                    hasManualOrFcBuff = true;
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (expiringBuffDetected && !buffWarningSent && config.WarnExpiringBuffs)
-            {
-                buffWarningSent = true;
-                chatGui.Print("[Spiritbond Tracker] WARNING: One of your Spiritbond buffs is expiring in less than 2 minutes!");
-            }
-            else if (!expiringBuffDetected)
-            {
-                buffWarningSent = false;
-            }
-
             ImGui.BeginChild("BuffCard", new Vector2(0, 42), true, ImGuiWindowFlags.NoScrollbar);
-            if (hasPotionBuff && hasManualOrFcBuff)
+            if (cachedHasPotionBuff && cachedHasManualOrFcBuff)
                 ImGui.TextColored(config.HighContrastMode ? new Vector4(0.0f, 1.0f, 0.0f, 1.0f) : new Vector4(0.2f, 1.0f, 0.2f, 1.0f), "✨ Buff Synergy: MAXIMIZED (Full Bonus Active)");
-            else if (hasPotionBuff || hasManualOrFcBuff)
+            else if (cachedHasPotionBuff || cachedHasManualOrFcBuff)
                 ImGui.TextColored(config.HighContrastMode ? new Vector4(1.0f, 1.0f, 0.0f, 1.0f) : new Vector4(1.0f, 0.8f, 0.2f, 1.0f), "⚡ Buff Synergy: PARTIAL (Add missing buff!)");
             else
                 ImGui.TextColored(config.HighContrastMode ? new Vector4(1.0f, 0.0f, 0.0f, 1.0f) : new Vector4(1.0f, 0.2f, 0.2f, 1.0f), "❌ Buff Synergy: NONE (Use Potion + Manual/FC!)");
 
-            if (expiringBuffDetected)
+            if (cachedExpiringBuff)
             {
                 ImGui.SameLine();
                 ImGui.TextColored(new Vector4(1.0f, 0.3f, 0.3f, 1.0f), "⚠️ Expiring soon (< 2m)!");
@@ -833,8 +1116,7 @@ public class SpiritbondWindow : Window
 
         if (config.ShowDutyAdvisor)
         {
-            float avgIvl = GetAverageEquippedItemLevel();
-            string recommendedDuty = GetRandomizedDutyRecommendation(avgIvl);
+            string recommendedDuty = GetRandomizedDutyRecommendation(cachedAvgIvl);
 
             ImGui.BeginChild("AdvisorCard", new Vector2(0, 50), true, ImGuiWindowFlags.NoScrollbar);
             ImGui.TextColored(accentColor, "💡 Smart Duty Advisor:");
@@ -843,7 +1125,7 @@ public class SpiritbondWindow : Window
             ImGui.SameLine();
             if (ImGui.Button("🔄 Roll"))
             {
-                GetRandomizedDutyRecommendation(avgIvl, true);
+                GetRandomizedDutyRecommendation(cachedAvgIvl, true);
             }
 
             ImGui.EndChild();
@@ -851,14 +1133,13 @@ public class SpiritbondWindow : Window
 
         if (config.ShowCappedSlotsCounter)
         {
-            var gearListPreview = GetCurrentGearList();
-            int cappedCount = gearListPreview.Count(g => g.CurrentPercent >= 100f);
+            var gearListPreview = cachedGearList;
             int totalCount = gearListPreview.Count;
 
             ImGui.BeginChild("CounterCard", new Vector2(0, 35), true, ImGuiWindowFlags.NoScrollbar);
             ImGui.Text($"Ready for Extraction (Capped Slots): ");
             ImGui.SameLine();
-            ImGui.TextColored(cappedCount == totalCount ? new Vector4(0.0f, 1.0f, 0.5f, 1.0f) : accentColor, $"{cappedCount} / {totalCount}");
+            ImGui.TextColored(cachedCappedCount == totalCount ? new Vector4(0.0f, 1.0f, 0.5f, 1.0f) : accentColor, $"{cachedCappedCount} / {totalCount}");
             ImGui.EndChild();
         }
 
@@ -887,7 +1168,17 @@ public class SpiritbondWindow : Window
         }
 
         ImGui.SameLine();
-        if (ImGui.Button("Extract Materia")) chatGui.Print("/materiaextraction");
+        if (ImGui.Button("Extract Materia"))
+        {
+            unsafe
+            {
+                var am = ActionManager.Instance();
+                if (am != null)
+                {
+                    am->UseAction(ActionType.GeneralAction, 14);
+                }
+            }
+        }
         ImGui.SameLine();
         if (ImGui.Button("⚙ Settings"))
         {
@@ -902,14 +1193,9 @@ public class SpiritbondWindow : Window
         ImGui.PushStyleColor(ImGuiCol.TableRowBg, new Vector4(frameBgColor.X * 1.2f, frameBgColor.Y * 1.2f, frameBgColor.Z * 1.2f, 1.0f));
         ImGui.PushStyleColor(ImGuiCol.TableRowBgAlt, frameBgColor);
 
-        var gearList = GetCurrentGearList();
+        var gearList = cachedGearList;
         int columnCount = 4 + (config.ShowEligibilityColumn ? 1 : 0);
-
-       
-        float gainColWidth = Math.Max(
-            ImGui.CalcTextSize("Gain in Duty").X,
-            ImGui.CalcTextSize("+100.00%").X
-        ) + (ImGui.GetStyle().CellPadding.X * 2) + 12f;
+        float gainColWidth = 85f * fontScale;
 
         if (ImGui.BeginTable("GearTable", columnCount, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.SizingFixedFit))
         {
@@ -1031,11 +1317,7 @@ public class SpiritbondWindow : Window
                             ImGui.Indent(10f);
                             ImGui.TextColored(new Vector4(0.8f, 0.8f, 0.8f, 1.0f), $"Items progressed in this duty as [{jobUsed}]:");
 
-                           
-                            float dateColumnWidth = Math.Max(
-                                ImGui.CalcTextSize("Date & Time").X,
-                                ImGui.CalcTextSize("2026-00-00 00:00:00").X
-                            ) + (ImGui.GetStyle().CellPadding.X * 2) + 12f;
+                            const float dateColumnWidth = 145f;
 
                             if (ImGui.BeginTable($"HistoryTable_{group.Key.GetHashCode()}", 6, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.ScrollX))
                             {
