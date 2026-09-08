@@ -326,7 +326,8 @@ public class SpiritbondWindow : Window
     private bool isStatsWindowVisible = false;
     private string historySearchFilter = string.Empty;
     private string historyCategoryFilter = "All";
-    private bool buffWarningSent = false;
+    
+    private DateTime lastBuffWarningTime = DateTime.MinValue;
 
     private string cachedRecommendedDuty = string.Empty;
     private float lastCheckedAvgIvl = 0f;
@@ -654,14 +655,18 @@ public class SpiritbondWindow : Window
                             cachedHasFcBuff = true;
                             debugDetectedStatuses.Add($"FC: '{bName}' (ID: {status.StatusId})");
                         }
-                        // 3. Squadron / Commercial Manual
-                        else if (bNameLower.Contains("manual") || bDescLower.Contains("speed is increased") || status.StatusId == 1003)
+                        // 3. Squadron / Commercial Manual.
+                        // Use the fixed status ID only; names/descriptions are localized and too broad.
+                        else if (status.StatusId == 1003)
                         {
                             cachedHasManualBuff = true;
                             cachedManualRemaining = status.RemainingTime;
-                            debugDetectedStatuses.Add($"Manual: '{bName}' (ID: {status.StatusId}, Rem: {(int)(status.RemainingTime / 60)}m)");
+                            debugDetectedStatuses.Add(
+                                $"Manual: '{bName}' (ID: {status.StatusId}, Rem: {(int)(status.RemainingTime / 60)}m)");
 
-                            if (config.WarnExpiringBuffs && status.RemainingTime > 0f && status.RemainingTime < 120f)
+                            if (config.WarnExpiringBuffs &&
+                                status.RemainingTime > 0f &&
+                                status.RemainingTime < 120f)
                             {
                                 cachedExpiringBuff = true;
                             }
@@ -671,9 +676,12 @@ public class SpiritbondWindow : Window
                         {
                             cachedHasPotionBuff = true;
                             cachedPotionRemaining = status.RemainingTime;
-                            debugDetectedStatuses.Add($"Spiritbond potion / Medicated: '{bName}' (ID: {status.StatusId}, Rem: {(int)(status.RemainingTime / 60)}m)");
+                            debugDetectedStatuses.Add(
+                                $"Spiritbond potion / Medicated: '{bName}' (ID: {status.StatusId}, Rem: {(int)(status.RemainingTime / 60)}m)");
 
-                            if (config.WarnExpiringBuffs && status.RemainingTime > 0f && status.RemainingTime < 120f)
+                            if (config.WarnExpiringBuffs &&
+                                status.RemainingTime > 0f &&
+                                status.RemainingTime < 120f)
                             {
                                 cachedExpiringBuff = true;
                             }
@@ -682,14 +690,14 @@ public class SpiritbondWindow : Window
                 }
             }
 
-            if (cachedExpiringBuff && !buffWarningSent && config.WarnExpiringBuffs)
+            const double warningCooldownSeconds = 60;
+            if (cachedExpiringBuff &&
+                config.WarnExpiringBuffs &&
+                (DateTime.UtcNow - lastBuffWarningTime).TotalSeconds >= warningCooldownSeconds)
             {
-                buffWarningSent = true;
-                chatGui.Print("[Spiritbond Tracker] WARNING: One of your Spiritbond buffs is expiring in less than 2 minutes!");
-            }
-            else if (!cachedExpiringBuff)
-            {
-                buffWarningSent = false;
+                lastBuffWarningTime = DateTime.UtcNow;
+                chatGui.Print(
+                    "[Spiritbond Tracker] WARNING: A timed Spiritbond consumable expires in less than 2 minutes!");
             }
 
             lastGearRefresh = DateTime.UtcNow;
@@ -1369,7 +1377,7 @@ public class SpiritbondWindow : Window
 
         if (isHistoryWindowVisible)
         {
-            ImGui.SetNextWindowSize(new Vector2(750, 520), ImGuiCond.FirstUseEver);
+            ImGui.SetNextWindowSize(new Vector2(950, 520), ImGuiCond.FirstUseEver);
             if (ImGui.Begin("Spiritbond Past History", ref isHistoryWindowVisible, ImGuiWindowFlags.NoScrollbar))
             {
                 ImGui.TextColored(accentColor, "Duty & Session Progress History (Filtered)");
@@ -1435,8 +1443,8 @@ public class SpiritbondWindow : Window
                             ImGui.Indent(10f);
                             ImGui.TextColored(new Vector4(0.8f, 0.8f, 0.8f, 1.0f), $"Items progressed in this entry as [{jobUsed}]:");
 
-                            const float dateColumnWidth = 145f;
-
+                            // "yyyy-MM-dd HH:mm:ss" needs a fixed width; scale it with the UI font.
+                            float dateColumnWidth = 190f * fontScale;
                             if (ImGui.BeginTable($"HistoryTable_{group.Key.GetHashCode()}", 6, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.ScrollX))
                             {
                                 ImGui.TableSetupColumn("Item Name", ImGuiTableColumnFlags.WidthStretch);
