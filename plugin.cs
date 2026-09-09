@@ -327,8 +327,6 @@ public class SpiritbondWindow : Window
     private string historySearchFilter = string.Empty;
     private string historyCategoryFilter = "All";
     
-    private DateTime lastBuffWarningTime = DateTime.MinValue;
-
     private string cachedRecommendedDuty = string.Empty;
     private float lastCheckedAvgIvl = 0f;
     private readonly Random randomRoller = new();
@@ -341,16 +339,53 @@ public class SpiritbondWindow : Window
     private DateTime lastGearRefresh = DateTime.MinValue;
     private readonly Dictionary<uint, (string Name, uint ItemLevel)> itemDataCache = new();
 
-    private bool cachedHasPotionBuff = false;
+    private bool cachedHasMedicatedBuff = false;
     private bool cachedHasManualBuff = false;
     private bool cachedHasFcBuff = false;
     private bool cachedHasFoodBuff = false;
     private bool cachedExpiringBuff = false;
-    private float cachedPotionRemaining = 0f;
+    private float cachedMedicatedRemaining = 0f;
     private float cachedManualRemaining = 0f;
     private float cachedAvgIvl = 0f;
     private int cachedCappedCount = 0;
     private List<string> debugDetectedStatuses = new();
+    private bool wasInExpiryWindow = false;
+
+    // /item commands issued in the same frame do not both execute reliably.
+    // When Apply All Buffs is used, start the potion first and issue the
+    // manual after the item-use lock / command processing delay has passed.
+    private bool pendingSquadronManualUse = false;
+    private DateTime pendingSquadronManualUseAt = DateTime.MinValue;
+
+    // Medicated is shared by Superior Spiritbonding Potion and crafting/gathering consumables.
+    // StatusList does not expose the source item, so any fresh Medicated effect is protected.
+    private const float MedicatedOverwriteProtectionSeconds = 300f;
+    private const uint MedicatedStatusId = 49;
+    private const uint FcSpiritbondStatusId = 361;
+    private const uint SquadronManualStatusId = 1083;
+
+    private static bool IsExpiringTimedBuff(float remainingTime)
+        => remainingTime > 0f && remainingTime < 120f;
+
+    // Disciples of the Land (gathering) and Disciples of the Hand (crafting) job abbreviations.
+    // Spiritbonding potions are meant for combat-job gear progression; on these jobs (or while a
+    // crafting/gathering consumable is active) the potion button must not fire.
+   
+
+    private static readonly HashSet<string> CraftingJobAbbreviations = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "CRP", "BSM", "ARM", "GSM", "LTW", "WVR", "ALC", "CUL"
+    };
+
+   private bool IsCraftingClassActive()
+{
+    if (objectTable.LocalPlayer == null) return false;
+
+    var classJobObj = objectTable.LocalPlayer.ClassJob.Value;
+    string abbr = classJobObj.Abbreviation.ToString();
+
+    return CraftingJobAbbreviations.Contains(abbr);
+}
 
     private static readonly (int Index, string Name, string Category)[] Slots =
     {
@@ -512,6 +547,13 @@ public class SpiritbondWindow : Window
     public override unsafe void Update()
     {
         if (objectTable.LocalPlayer == null) return;
+        
+        if (pendingSquadronManualUse &&
+            DateTime.UtcNow >= pendingSquadronManualUseAt)
+    {
+            pendingSquadronManualUse = false;
+            commandManager.ProcessCommand("/item \"Squadron Spiritbonding Manual\"");
+    }
 
         if (config.AutoEcoFieldOps)
         {
@@ -614,12 +656,12 @@ public class SpiritbondWindow : Window
             cachedCappedCount = cachedGearList.Count(g => g.CurrentPercent >= 100f);
             cachedAvgIvl = GetAverageEquippedItemLevel();
 
-            cachedHasPotionBuff = false;
+            cachedHasMedicatedBuff = false;
             cachedHasManualBuff = false;
             cachedHasFcBuff = false;
             cachedHasFoodBuff = false;
             cachedExpiringBuff = false;
-            cachedPotionRemaining = 0f;
+            cachedMedicatedRemaining = 0f;
             cachedManualRemaining = 0f;
             debugDetectedStatuses.Clear();
 
@@ -638,67 +680,50 @@ public class SpiritbondWindow : Window
                         string bDesc = row.Value.Description.ToString();
                         string bNameLower = bName.ToLowerInvariant();
                         string bDescLower = bDesc.ToLowerInvariant();
+                        debugDetectedStatuses.Add($"Raw: '{bName}' (ID: {status.StatusId}, Rem: {status.RemainingTime:F1}s)");
 
-                        // Keep the complete status list visible for diagnostics.
-                        debugDetectedStatuses.Add($"Raw: '{bName}' (ID: {status.StatusId}, Rem: {(int)(status.RemainingTime / 60)}m)");
-
-                        // 1. Food (Well Fed with spiritbond bonus)
-                        if (bNameLower.Contains("well fed") && (bDescLower.Contains("spiritbond") || bDescLower.Contains("spiritbonding")))
+                        if (bNameLower.Contains("well fed") &&
+                            (bDescLower.Contains("spiritbond") || bDescLower.Contains("spiritbonding")))
                         {
                             cachedHasFoodBuff = true;
                             debugDetectedStatuses.Add($"Food: '{bName}' (ID: {status.StatusId})");
                         }
-                        // 2. Free Company Action (That Which Binds Us)
-                        else if (bNameLower.Contains("that which binds us") || 
-                                 (bDescLower.Contains("spiritbond") && (bNameLower.Contains("company") || bNameLower.Contains("inspirational"))))
+                        // FC buff is display-only: it does not satisfy a required buff, trigger
+                        // a refresh, contribute to synergy, or produce an expiry warning.
+                        else if (status.StatusId == FcSpiritbondStatusId)
                         {
                             cachedHasFcBuff = true;
-                            debugDetectedStatuses.Add($"FC: '{bName}' (ID: {status.StatusId})");
+                            debugDetectedStatuses.Add($"FC Spiritbond Action (display only): '{bName}' (ID: {status.StatusId}, Rem: {status.RemainingTime:F1}s)");
                         }
-                        // 3. Squadron / Commercial Manual.
-                        // Use the fixed status ID only; names/descriptions are localized and too broad.
-                        else if (status.StatusId == 1003)
+                        // The actual Squadron Spiritbonding Manual status is ID 1038.
+                        else if (status.StatusId == SquadronManualStatusId)
                         {
-                            cachedHasManualBuff = true;
+                            cachedHasManualBuff = status.RemainingTime > 0f;
                             cachedManualRemaining = status.RemainingTime;
-                            debugDetectedStatuses.Add(
-                                $"Manual: '{bName}' (ID: {status.StatusId}, Rem: {(int)(status.RemainingTime / 60)}m)");
+                            debugDetectedStatuses.Add($"Squadron Manual: '{bName}' (ID: {status.StatusId}, Rem: {status.RemainingTime:F1}s)");
 
-                            if (config.WarnExpiringBuffs &&
-                                status.RemainingTime > 0f &&
-                                status.RemainingTime < 120f)
-                            {
+                            if (config.WarnExpiringBuffs && IsExpiringTimedBuff(status.RemainingTime))
                                 cachedExpiringBuff = true;
-                            }
                         }
-                        // Spiritbond potions apply the generic Medicated status. Use its stable ID, not a localized name.
-                        else if (status.StatusId == 49)
+                        // Medicated is source-agnostic: do not claim it is a spiritbond potion.
+                        else if (status.StatusId == MedicatedStatusId)
                         {
-                            cachedHasPotionBuff = true;
-                            cachedPotionRemaining = status.RemainingTime;
-                            debugDetectedStatuses.Add(
-                                $"Spiritbond potion / Medicated: '{bName}' (ID: {status.StatusId}, Rem: {(int)(status.RemainingTime / 60)}m)");
-
-                            if (config.WarnExpiringBuffs &&
-                                status.RemainingTime > 0f &&
-                                status.RemainingTime < 120f)
-                            {
-                                cachedExpiringBuff = true;
-                            }
+                            cachedHasMedicatedBuff = status.RemainingTime > 0f;
+                            cachedMedicatedRemaining = status.RemainingTime;
+                            debugDetectedStatuses.Add($"Medicated (source unknown): '{bName}' (ID: {status.StatusId}, Rem: {status.RemainingTime:F1}s)");
                         }
                     }
                 }
             }
 
-            const double warningCooldownSeconds = 60;
-            if (cachedExpiringBuff &&
-                config.WarnExpiringBuffs &&
-                (DateTime.UtcNow - lastBuffWarningTime).TotalSeconds >= warningCooldownSeconds)
+            // Only the verified Squadron Manual can generate an expiry warning, once per entry
+            // into the final two-minute window. FC and Medicated are deliberately excluded.
+            bool isInExpiryWindow = cachedExpiringBuff && config.WarnExpiringBuffs;
+            if (isInExpiryWindow && !wasInExpiryWindow)
             {
-                lastBuffWarningTime = DateTime.UtcNow;
-                chatGui.Print(
-                    "[Spiritbond Tracker] WARNING: A timed Spiritbond consumable expires in less than 2 minutes!");
+                chatGui.Print("[Spiritbond Tracker] WARNING: Squadron Spiritbonding Manual expires in less than 2 minutes!");
             }
+            wasInExpiryWindow = isInExpiryWindow;
 
             lastGearRefresh = DateTime.UtcNow;
         }
@@ -1143,20 +1168,12 @@ public class SpiritbondWindow : Window
         {
             ImGui.BeginChild("BuffCard", new Vector2(0, 42), true, ImGuiWindowFlags.NoScrollbar);
             
-            bool hasConsumable = cachedHasPotionBuff || cachedHasManualBuff;
+            bool hasConsumable = cachedHasMedicatedBuff || cachedHasManualBuff;
 
-            if (hasConsumable && cachedHasFcBuff)
-            {
-                ImGui.TextColored(config.HighContrastMode ? new Vector4(0.0f, 1.0f, 0.0f, 1.0f) : new Vector4(0.2f, 1.0f, 0.2f, 1.0f), 
-                    cachedHasFoodBuff ? "✨ Synergy: FULL (Consumable + FC + Food)" : "✨ Synergy: MAX (Consumable + FC)");
-            }
-            else if (hasConsumable)
+            // FC is shown in the tooltip only and never changes this result.
+            if (hasConsumable)
             {
                 ImGui.TextColored(config.HighContrastMode ? new Vector4(0.0f, 1.0f, 0.0f, 1.0f) : new Vector4(0.2f, 1.0f, 0.4f, 1.0f), "✨ Synergy: OPTIMAL (Consumable Active)");
-            }
-            else if (cachedHasFcBuff)
-            {
-                ImGui.TextColored(config.HighContrastMode ? new Vector4(1.0f, 1.0f, 0.0f, 1.0f) : new Vector4(1.0f, 0.8f, 0.2f, 1.0f), "⚡ Synergy: PARTIAL (Missing Potion / Manual)");
             }
             else
             {
@@ -1168,9 +1185,9 @@ public class SpiritbondWindow : Window
                 ImGui.BeginTooltip();
                 ImGui.Text("Spiritbond Buff Status:");
                 ImGui.Separator();
-                string potTime = cachedHasPotionBuff ? $"({(int)(cachedPotionRemaining / 60)}m left)" : "";
+                string medicatedTime = cachedHasMedicatedBuff ? $"({Math.Ceiling(cachedMedicatedRemaining / 60f):F0}m left)" : "";
                 string manTime = cachedHasManualBuff ? $"({(int)(cachedManualRemaining / 60)}m left)" : "";
-                ImGui.TextColored(cachedHasPotionBuff ? new Vector4(0, 1, 0, 1) : new Vector4(1, 0, 0, 1), $"• Potion (Medicated; Spiritbond assumed): {(cachedHasPotionBuff ? $"Active {potTime}" : "Missing")}");
+                ImGui.TextColored(cachedHasMedicatedBuff ? new Vector4(0, 1, 0, 1) : new Vector4(0.7f, 0.7f, 0.7f, 1), $"• Medicated (source unknown): {(cachedHasMedicatedBuff ? $"Active {medicatedTime}" : "None")}");
                 ImGui.TextColored(cachedHasFcBuff ? new Vector4(0, 1, 0, 1) : new Vector4(1, 0, 0, 1), $"• FC Buff (Company Action): {(cachedHasFcBuff ? "Active (+1 to +3)" : "Missing")}");
                 ImGui.TextColored(cachedHasManualBuff ? new Vector4(0, 1, 0, 1) : new Vector4(0.7f, 0.7f, 0.7f, 1), $"• Manual (Squadron): {(cachedHasManualBuff ? $"Active {manTime}" : "None")}");
                 ImGui.TextColored(cachedHasFoodBuff ? new Vector4(0, 1, 0, 1) : new Vector4(0.7f, 0.7f, 0.7f, 1), $"• Food (Optional): {(cachedHasFoodBuff ? "Active (+2)" : "None")}");
@@ -1199,7 +1216,19 @@ public class SpiritbondWindow : Window
             }
 
             // Single Smart Action Button
-            bool needsPotion = !cachedHasPotionBuff || cachedPotionRemaining < 600f;
+            //
+            // Safety guard: never fire the Superior Spiritbonding Potion command if doing so
+            // would overwrite a crafting/gathering consumable (they share the same Medicated
+            // status slot) or if the player is currently on a Disciple of the Hand/Land job,
+            // since the spiritbond potion has no purpose there and would just waste a charge
+            // and clobber whatever craft/gathering buff is (or is about to be) active.
+            bool isCraftingClass = IsCraftingClassActive();
+            bool hasProtectedMedicated = cachedHasMedicatedBuff && cachedMedicatedRemaining > MedicatedOverwriteProtectionSeconds;
+            bool blockSpiritbondPotion = isCraftingClass || hasProtectedMedicated;
+            bool wouldNeedPotion = !cachedHasMedicatedBuff || cachedMedicatedRemaining < 600f;
+            bool needsPotion = wouldNeedPotion && !blockSpiritbondPotion;
+            bool potionBlockedWhileNeeded = wouldNeedPotion && blockSpiritbondPotion;
+
             bool needsManual = !cachedHasManualBuff || cachedManualRemaining < 600f;
             bool canUseAny = needsPotion || needsManual;
 
@@ -1207,31 +1236,80 @@ public class SpiritbondWindow : Window
             if (!canUseAny)
             {
                 ImGui.BeginDisabled();
-                ImGui.SmallButton("✔️ Buffs Active (>10m)");
+                ImGui.SmallButton(potionBlockedWhileNeeded ? "🚫 Potion Blocked" : "✔️ Buffs Active (>10m)");
                 ImGui.EndDisabled();
-                if (ImGui.IsItemHovered()) ImGui.SetTooltip("All Spiritbond consumables have more than 10 minutes remaining.");
+                if (ImGui.IsItemHovered())
+                {
+                   if (potionBlockedWhileNeeded)
+{
+             string medicatedBlockReason = string.Empty;
+
+if (hasProtectedMedicated)
+{
+    string medicatedMinutes =
+        Math.Ceiling(cachedMedicatedRemaining / 60f).ToString("F0");
+
+    medicatedBlockReason =
+        "- A Medicated effect has " +
+        medicatedMinutes +
+        "m remaining (protected for >5m)\n";
+}
+
+string craftingBlockReason = isCraftingClass
+    ? "- Current job is a Disciple of the Hand\n"
+    : string.Empty;
+
+ImGui.SetTooltip(
+    "Superior Spiritbonding Potion was NOT applied because:\n" +
+    medicatedBlockReason +
+    craftingBlockReason +
+    "Switch to a non-crafting job and wait until the protected Medicated effect has 5 minutes or less remaining."
+);
+}
+else
+{
+    ImGui.SetTooltip("All Spiritbond consumables have more than 10 minutes remaining.");
+}
+                }
             }
             else
             {
                 string btnLabel = needsPotion ? "🧪 Apply Potion" : "📖 Apply Manual";
                 if (needsPotion && needsManual) btnLabel = "⚡ Apply All Buffs";
 
-                if (ImGui.SmallButton(btnLabel))
-                {
-                    if (needsPotion)
-                    {
-                        commandManager.ProcessCommand("/item \"Superior Spiritbonding Potion\"");
-                    }
-                    if (needsManual)
-                    {
-                        commandManager.ProcessCommand("/item \"Squadron Spiritbonding Manual\"");
-                    }
-                }
+               if (ImGui.SmallButton(btnLabel))
+{
+    if (needsPotion)
+    {
+        commandManager.ProcessCommand("/item \"Superior Spiritbonding Potion\"");
+    }
+
+    if (needsManual)
+    {
+        // Jeżeli używamy też potiona, manual musi poczekać, ponieważ
+        // dwa /item w tym samym frame nie są wykonywane niezawodnie.
+        if (needsPotion)
+        {
+            pendingSquadronManualUse = true;
+            pendingSquadronManualUseAt = DateTime.UtcNow.AddSeconds(1.0);
+        }
+        else
+        {
+            commandManager.ProcessCommand("/item \"Squadron Spiritbonding Manual\"");
+        }
+    }
+}
 
                 if (ImGui.IsItemHovered())
                 {
+                    string potionStatusText = needsPotion
+                        ? "Needs refresh"
+                        : (potionBlockedWhileNeeded
+                            ? (isCraftingClass ? "Blocked (Disciple of the Hand/Land)" : $"Blocked (Medicated protected: {Math.Ceiling(cachedMedicatedRemaining / 60f):F0}m left)")
+                            : "Protected (>10m)");
+
                     ImGui.SetTooltip($"Uses missing/expiring items (< 10m):\n" +
-                                     $"- Potion: {(needsPotion ? "Needs refresh" : "Protected (>10m)")}\n" +
+                                     $"- Potion: {potionStatusText}\n" +
                                      $"- Manual: {(needsManual ? "Needs refresh" : "Protected (>10m)")}");
                 }
             }
