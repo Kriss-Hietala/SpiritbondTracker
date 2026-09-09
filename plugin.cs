@@ -11,6 +11,7 @@ using Dalamud.Bindings.ImGui;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 
 // Compatible namespaces for Lumina 7 / Dalamud v15
 using Lumina.Excel.Sheets;
@@ -363,6 +364,8 @@ public class SpiritbondWindow : Window
     private const uint MedicatedStatusId = 49;
     private const uint FcSpiritbondStatusId = 361;
     private const uint SquadronManualStatusId = 1083;
+    private const uint SuperiorSpiritbondPotionBaseItemId = 27960;
+    private const uint SquadronSpiritbondingManualItemId = 14951;
 
     private static bool IsExpiringTimedBuff(float remainingTime)
         => remainingTime > 0f && remainingTime < 120f;
@@ -405,6 +408,7 @@ public class SpiritbondWindow : Window
 
     private Dictionary<int, ushort> dutyStartSpiritbond = new();
     private Dictionary<int, ushort> previousSlotSpiritbond = new();
+    private Dictionary<int, uint> trackedItemIds = new();
     private string lastTrackedDuty = string.Empty;
     private string currentSessionId = string.Empty;
 
@@ -544,6 +548,131 @@ public class SpiritbondWindow : Window
         }
     }
 
+    private readonly struct InventoryItemLocation
+    {
+        public uint ItemId { get; }
+        public InventoryType InventoryType { get; }
+        public uint Slot { get; }
+
+        public InventoryItemLocation(uint itemId, InventoryType inventoryType, uint slot)
+        {
+            ItemId = itemId;
+            InventoryType = inventoryType;
+            Slot = slot;
+        }
+    }
+
+    private unsafe bool TryFindItemInNormalInventory(uint baseItemId, out InventoryItemLocation location)
+    {
+        location = default;
+        var inventoryManager = InventoryManager.Instance();
+        if (inventoryManager == null) return false;
+
+        InventoryType[] inventoryTypes =
+        {
+            InventoryType.Inventory1,
+            InventoryType.Inventory2,
+            InventoryType.Inventory3,
+            InventoryType.Inventory4,
+        };
+
+        foreach (var inventoryType in inventoryTypes)
+        {
+            var container = inventoryManager->GetInventoryContainer(inventoryType);
+            if (container == null) continue;
+
+            for (int slot = 0; slot < container->Size; slot++)
+            {
+                var item = container->GetInventorySlot(slot);
+                if (item == null || item->ItemId == 0) continue;
+
+               // InventoryItem.ItemId zawiera bazowy ID itemu.
+// Jakość HQ jest przechowywana osobno w ItemFlags.
+if (item->ItemId != baseItemId)
+{
+    continue;
+}
+
+uint actionItemId = item->ItemId;
+
+// UseItem wymaga ID akcji HQ, czyli bazowego ID + 1 000 000.
+if (item->Flags.HasFlag(InventoryItem.ItemFlags.HighQuality))
+{
+    actionItemId += 1_000_000;
+}
+
+location = new InventoryItemLocation(
+    actionItemId,
+    inventoryType,
+    (uint)slot
+);
+
+return true;
+            }
+        }
+
+        return false;
+    }
+
+   private unsafe bool TryUseInventoryItem(
+    InventoryItemLocation item)
+{
+    var inventoryContext = AgentInventoryContext.Instance();
+
+    if (inventoryContext == null)
+    {
+        chatGui.Print(
+            "[Spiritbond Tracker] Inventory context is unavailable."
+        );
+
+        return false;
+    }
+
+    // UseItem samo odnajduje właściwy stack w normalnym inventory.
+    // item.ItemId zachowuje wariant normalny albo HQ:
+    // normal: 27960, HQ: 1027960.
+    long result = inventoryContext->UseItem(item.ItemId);
+
+    // Dla tej funkcji 0 oznacza poprawne przekazanie użycia itemu.
+    return result == 0;
+}
+
+  private unsafe bool TryUseSpiritbondPotion()
+{
+    if (!TryFindItemInNormalInventory(
+        SuperiorSpiritbondPotionBaseItemId,
+        out var potion))
+    {
+        chatGui.Print(
+            "[Spiritbond Tracker] Superior Spiritbond Potion was not found in normal inventory."
+        );
+
+        return false;
+    }
+
+    return TryUseInventoryItem(potion);
+}
+
+
+    
+
+   private unsafe bool TryUseSquadronManual()
+{
+    if (!TryFindItemInNormalInventory(
+        SquadronSpiritbondingManualItemId,
+        out var manual))
+    {
+        chatGui.Print(
+            "[Spiritbond Tracker] Squadron Spiritbonding Manual was not found in normal inventory."
+        );
+
+        return false;
+    }
+
+    return TryUseInventoryItem(manual);
+}
+       
+
     public override unsafe void Update()
     {
         if (objectTable.LocalPlayer == null) return;
@@ -552,7 +681,7 @@ public class SpiritbondWindow : Window
             DateTime.UtcNow >= pendingSquadronManualUseAt)
     {
             pendingSquadronManualUse = false;
-            commandManager.ProcessCommand("/item \"Squadron Spiritbonding Manual\"");
+            TryUseSquadronManual();
     }
 
         if (config.AutoEcoFieldOps)
@@ -632,21 +761,38 @@ public class SpiritbondWindow : Window
             if (item == null || item->ItemId == 0) continue;
 
             ushort currentSb = (ushort)item->SpiritbondOrCollectability;
+            bool itemChanged = trackedItemIds.TryGetValue(slot.Index, out uint oldItemId) && oldItemId != item->ItemId;
+
+            if (itemChanged)
+            {
+                // A gearset swap may reuse the same slot for an unrelated item.
+                // Its old baseline must never be used for the new item.
+                dutyStartSpiritbond.Remove(slot.Index);
+                previousSlotSpiritbond.Remove(slot.Index);
+                notifiedCappedSlots.Remove(slot.Index);
+            }
+            trackedItemIds[slot.Index] = item->ItemId;
 
             if (!dutyStartSpiritbond.ContainsKey(slot.Index))
-            {
                 dutyStartSpiritbond[slot.Index] = currentSb;
+
+            if (!previousSlotSpiritbond.TryGetValue(slot.Index, out ushort previousSb))
+            {
+                // First observation is a baseline, never a cap notification.
                 previousSlotSpiritbond[slot.Index] = currentSb;
+                continue;
             }
 
-            if (currentSb >= 10000 && config.SendChatNotification)
+            if (config.SendChatNotification &&
+                previousSb < 10000 &&
+                currentSb >= 10000 &&
+                !notifiedCappedSlots.ContainsKey(slot.Index))
             {
-                if (!notifiedCappedSlots.TryGetValue(slot.Index, out var notified) || !notified)
-                {
-                    notifiedCappedSlots[slot.Index] = true;
-                    chatGui.Print($"[Spiritbond Tracker] Slot {slot.Name} reached 100% spiritbond! Ready for extraction.");
-                }
+                notifiedCappedSlots[slot.Index] = true;
+                chatGui.Print($"[Spiritbond Tracker] Slot {slot.Name} reached 100% spiritbond! Ready for extraction.");
             }
+
+            previousSlotSpiritbond[slot.Index] = currentSb;
         }
 
         // Update loop running every 250 ms
@@ -1281,7 +1427,7 @@ else
 {
     if (needsPotion)
     {
-        commandManager.ProcessCommand("/item \"Superior Spiritbonding Potion\"");
+        TryUseSpiritbondPotion();
     }
 
     if (needsManual)
@@ -1291,11 +1437,11 @@ else
         if (needsPotion)
         {
             pendingSquadronManualUse = true;
-            pendingSquadronManualUseAt = DateTime.UtcNow.AddSeconds(1.0);
+            pendingSquadronManualUseAt = DateTime.UtcNow.AddSeconds(2.5);
         }
         else
         {
-            commandManager.ProcessCommand("/item \"Squadron Spiritbonding Manual\"");
+            TryUseSquadronManual();
         }
     }
 }
@@ -1367,7 +1513,9 @@ else
         if (ImGui.Button("Reset Baseline"))
         {
             dutyStartSpiritbond.Clear();
+            previousSlotSpiritbond.Clear();
             notifiedCappedSlots.Clear();
+            trackedItemIds.Clear();
         }
 
         ImGui.SameLine();
