@@ -1,5 +1,0 @@
-/var/home/bazzite/Games/SpiritbondTracker/obj/Release/net10.0-windows/SpiritBondTracker.csproj.AssemblyReference.cache
-/var/home/bazzite/Games/SpiritbondTracker/obj/Release/net10.0-windows/SpiritBondTracker.GeneratedMSBuildEditorConfig.editorconfig
-/var/home/bazzite/Games/SpiritbondTracker/obj/Release/net10.0-windows/SpiritBondTracker.AssemblyInfoInputs.cache
-/var/home/bazzite/Games/SpiritbondTracker/obj/Release/net10.0-windows/SpiritBondTracker.AssemblyInfo.cs
-/var/home/bazzite/Games/SpiritbondTracker/obj/Release/net10.0-windows/SpiritBondTracker.csproj.CoreCompileInputs.cache
