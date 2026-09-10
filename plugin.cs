@@ -322,6 +322,10 @@ public class SpiritbondWindow : Window
     private readonly IChatGui chatGui;
     private readonly PluginConfig config;
     private readonly Plugin pluginInstance;
+    private string historySessionTypeFilter = "All";
+    private string historyPeriodFilter = "30d";
+    private int historyPageIndex = 0;
+    private const int HistoryPageSize = 25;
 
     private bool isHistoryWindowVisible = false;
     private bool isStatsWindowVisible = false;
@@ -333,6 +337,8 @@ public class SpiritbondWindow : Window
     private readonly Random randomRoller = new();
     private int ecoModeFrameCounter = 0;
     private bool wasAutoEcoActive = false;
+    private const int SegmentInactivityMinutes = 15;
+    private const int SegmentMinDurationMinutes = 3;
 
     private Dictionary<int, bool> notifiedCappedSlots = new();
 
@@ -352,14 +358,9 @@ public class SpiritbondWindow : Window
     private List<string> debugDetectedStatuses = new();
     private bool wasInExpiryWindow = false;
 
-    // /item commands issued in the same frame do not both execute reliably.
-    // When Apply All Buffs is used, start the potion first and issue the
-    // manual after the item-use lock / command processing delay has passed.
     private bool pendingSquadronManualUse = false;
     private DateTime pendingSquadronManualUseAt = DateTime.MinValue;
 
-    // Medicated is shared by Superior Spiritbonding Potion and crafting/gathering consumables.
-    // StatusList does not expose the source item, so any fresh Medicated effect is protected.
     private const float MedicatedOverwriteProtectionSeconds = 300f;
     private const uint MedicatedStatusId = 49;
     private const uint FcSpiritbondStatusId = 361;
@@ -370,25 +371,18 @@ public class SpiritbondWindow : Window
     private static bool IsExpiringTimedBuff(float remainingTime)
         => remainingTime > 0f && remainingTime < 120f;
 
-    // Disciples of the Land (gathering) and Disciples of the Hand (crafting) job abbreviations.
-    // Spiritbonding potions are meant for combat-job gear progression; on these jobs (or while a
-    // crafting/gathering consumable is active) the potion button must not fire.
-   
-
     private static readonly HashSet<string> CraftingJobAbbreviations = new(StringComparer.OrdinalIgnoreCase)
     {
         "CRP", "BSM", "ARM", "GSM", "LTW", "WVR", "ALC", "CUL"
     };
 
-   private bool IsCraftingClassActive()
-{
-    if (objectTable.LocalPlayer == null) return false;
-
-    var classJobObj = objectTable.LocalPlayer.ClassJob.Value;
-    string abbr = classJobObj.Abbreviation.ToString();
-
-    return CraftingJobAbbreviations.Contains(abbr);
-}
+    private bool IsCraftingClassActive()
+    {
+        if (objectTable.LocalPlayer == null) return false;
+        var classJobObj = objectTable.LocalPlayer.ClassJob.Value;
+        string abbr = classJobObj.Abbreviation.ToString();
+        return CraftingJobAbbreviations.Contains(abbr);
+    }
 
     private static readonly (int Index, string Name, string Category)[] Slots =
     {
@@ -466,8 +460,51 @@ public class SpiritbondWindow : Window
         public DateTime Timestamp { get; set; }
     }
 
+    public enum ContentSessionKind { StandardDuty, FieldOperation, ExplorationZone, OpenWorld }
+
+    public enum ActivitySegmentKind
+    {
+        Active,
+        Inactive,
+        JobChange,
+    }
+
+    public sealed class ActivitySegment
+    {
+        public ActivitySegmentKind Kind { get; set; }
+        public string JobName { get; set; } = "Unknown";
+        public DateTime StartedAt { get; set; }
+        public DateTime EndedAt { get; set; }
+        public float TotalGain { get; set; }
+        public int ItemsProgressed { get; set; }
+    }
+
+    public sealed class SessionSummary
+    {
+        public string SessionId { get; set; } = string.Empty;
+        public string ContentName { get; set; } = string.Empty;
+        public string JobName { get; set; } = "Unknown";
+        public ContentSessionKind Kind { get; set; }
+        public DateTime StartedAt { get; set; }
+        public DateTime EndedAt { get; set; }
+        public int ItemsProgressed { get; set; }
+        public float TotalGain { get; set; }
+        public List<ActivitySegment> Segments { get; set; } = new();
+    }
+
+    public sealed class HistoryStore
+    {
+        public int SchemaVersion { get; set; } = 2;
+        public List<HistoryRecord> ItemRecords { get; set; } = new();
+        public List<SessionSummary> Sessions { get; set; } = new();
+    }
+
+    private const int MaxSavedSessions = 500;
     private List<HistoryRecord> completedHistory = new();
-    private string historyFilePath => Path.Combine(pluginInterface.GetPluginConfigDirectory(), "spiritbond_history.json");
+    private List<SessionSummary> completedSessions = new();
+    private string legacyHistoryFilePath => Path.Combine(pluginInterface.GetPluginConfigDirectory(), "spiritbond_history.json");
+    private string historyFilePath => Path.Combine(pluginInterface.GetPluginConfigDirectory(), "spiritbond_sessions.json");
+    private string legacyBackupFilePath => Path.Combine(pluginInterface.GetPluginConfigDirectory(), "spiritbond_history.legacy.json");
 
     public SpiritbondWindow(
         IDalamudPluginInterface pluginInterface,
@@ -506,12 +543,162 @@ public class SpiritbondWindow : Window
         {
             if (File.Exists(historyFilePath))
             {
-                string json = File.ReadAllText(historyFilePath);
-                var data = JsonSerializer.Deserialize<List<HistoryRecord>>(json);
-                if (data != null) completedHistory = data;
+                var store = JsonSerializer.Deserialize<HistoryStore>(File.ReadAllText(historyFilePath));
+                if (store != null)
+                {
+                    completedHistory = store.ItemRecords ?? new List<HistoryRecord>();
+                    completedSessions = store.Sessions ?? new List<SessionSummary>();
+                    RebuildSessionSummaries();
+                    SaveHistory();
+                    return;
+                }
+            }
+            if (File.Exists(legacyHistoryFilePath))
+            {
+                completedHistory = JsonSerializer.Deserialize<List<HistoryRecord>>(File.ReadAllText(legacyHistoryFilePath)) ?? new List<HistoryRecord>();
+                if (!File.Exists(legacyBackupFilePath)) File.Copy(legacyHistoryFilePath, legacyBackupFilePath);
+                RebuildSessionSummaries();
+                SaveHistory();
+                chatGui.Print($"[Spiritbond Tracker] History migrated: {completedSessions.Count} legacy sessions imported.");
             }
         }
-        catch { completedHistory = new List<HistoryRecord>(); }
+        catch { completedHistory = new List<HistoryRecord>(); completedSessions = new List<SessionSummary>(); }
+    }
+
+    private static ContentSessionKind ClassifyContent(string name, bool isDuty)
+    {
+        if (name.Contains("Cosmic Exploration", StringComparison.OrdinalIgnoreCase) || name.Contains("Sinusorum", StringComparison.OrdinalIgnoreCase)) return ContentSessionKind.ExplorationZone;
+        if (name.Contains("Eureka", StringComparison.OrdinalIgnoreCase) || name.Contains("Bozja", StringComparison.OrdinalIgnoreCase) || name.Contains("Zadnor", StringComparison.OrdinalIgnoreCase) || name.Contains("Occult Crescent", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("South Horn", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("North Horn", StringComparison.OrdinalIgnoreCase)) return ContentSessionKind.FieldOperation;
+        return isDuty ? ContentSessionKind.StandardDuty : ContentSessionKind.OpenWorld;
+    }
+
+private static string InferSessionJobName(IEnumerable<HistoryRecord> records)
+{
+    // Jeśli w historii są różne joby, wybierz ten, który pojawia się
+    // najczęściej, preferując takie, które nie są "Unknown".
+    var best = records
+        .Select(r => string.IsNullOrEmpty(r.JobName) ? "Unknown" : r.JobName)
+        .GroupBy(j => j)
+        .Select(g => new { Job = g.Key, Count = g.Count() })
+        .OrderByDescending(x => x.Count)
+        .ThenBy(x => x.Job.Equals("Unknown", StringComparison.OrdinalIgnoreCase) ? 1 : 0)
+        .FirstOrDefault();
+
+    return best?.Job ?? "Unknown";
+}
+    private static string GetKindLabel(ContentSessionKind kind) => kind switch
+    {
+        ContentSessionKind.StandardDuty     => "Standard Duty",
+        ContentSessionKind.FieldOperation   => "Field Ops",
+        ContentSessionKind.ExplorationZone  => "Exploration",
+        ContentSessionKind.OpenWorld        => "Open World",
+        _                                   => "Unknown",
+    };
+
+   private void RebuildSessionSummaries()
+{
+    var grouped = completedHistory
+        .GroupBy(x => x.SessionId)
+        .OrderByDescending(g => g.Max(x => x.Timestamp));
+
+    var summaries = new List<SessionSummary>();
+
+    foreach (var g in grouped)
+    {
+        var first = g.First();
+
+        // NOWE: wybierz "najbardziej typowy" job dla sesji
+        string sessionJobName = InferSessionJobName(g);
+
+        var summary = new SessionSummary
+        {
+            SessionId       = g.Key,
+            ContentName     = first.DutyName,
+            JobName         = sessionJobName,
+            Kind            = ClassifyContent(first.DutyName, !first.DutyName.Contains("Overworld", StringComparison.OrdinalIgnoreCase)),
+            StartedAt       = g.Min(x => x.Timestamp),
+            EndedAt         = g.Max(x => x.Timestamp),
+            ItemsProgressed = g.Count(),
+            TotalGain       = g.Sum(x => x.Gained),
+            Segments        = new List<ActivitySegment>(),
+        };
+
+        if (summary.Kind == ContentSessionKind.FieldOperation ||
+            summary.Kind == ContentSessionKind.ExplorationZone)
+        {
+            BuildSegmentsForSession(summary, g.OrderBy(x => x.Timestamp).ToList());
+        }
+
+        summaries.Add(summary);
+    }
+
+    completedSessions = summaries;
+}
+
+    private void BuildSegmentsForSession(SessionSummary summary, List<HistoryRecord> records)
+    {
+        if (records.Count == 0) return;
+
+        DateTime segStart = records[0].Timestamp;
+        DateTime lastTime = records[0].Timestamp;
+        string segJob = records[0].JobName;
+        float segGain = 0f;
+        int segItems = 0;
+
+        void CloseSegment(ActivitySegmentKind kind, DateTime endTime)
+        {
+            var durationMinutes = (endTime - segStart).TotalMinutes;
+            if (durationMinutes < SegmentMinDurationMinutes && kind == ActivitySegmentKind.Inactive)
+                return;
+
+            summary.Segments.Add(new ActivitySegment
+            {
+                Kind = kind,
+                JobName = segJob,
+                StartedAt = segStart,
+                EndedAt = endTime,
+                TotalGain = segGain,
+                ItemsProgressed = segItems,
+            });
+
+            segStart = endTime;
+            segGain = 0f;
+            segItems = 0;
+        }
+
+        foreach (var r in records)
+        {
+            var gapMinutes = (r.Timestamp - lastTime).TotalMinutes;
+            bool jobChanged = !string.Equals(r.JobName, segJob, StringComparison.OrdinalIgnoreCase);
+
+            if (gapMinutes >= SegmentInactivityMinutes)
+            {
+                CloseSegment(ActivitySegmentKind.Active, lastTime);
+                CloseSegment(ActivitySegmentKind.Inactive, r.Timestamp);
+            }
+            else if (jobChanged)
+            {
+                CloseSegment(ActivitySegmentKind.Active, lastTime);
+                segJob = r.JobName;
+            }
+
+            segGain += r.Gained;
+            segItems += 1;
+            lastTime = r.Timestamp;
+        }
+
+        CloseSegment(ActivitySegmentKind.Active, lastTime);
+    }
+
+    private void ApplyHistoryRetention()
+    {
+        RebuildSessionSummaries();
+        if (completedSessions.Count <= MaxSavedSessions) return;
+        var keep = completedSessions.Take(MaxSavedSessions).Select(x => x.SessionId).ToHashSet();
+        completedHistory = completedHistory.Where(x => keep.Contains(x.SessionId)).ToList();
+        RebuildSessionSummaries();
     }
 
     private void SaveHistory()
@@ -520,8 +707,8 @@ public class SpiritbondWindow : Window
         {
             string dir = pluginInterface.GetPluginConfigDirectory();
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-            string json = JsonSerializer.Serialize(completedHistory, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(historyFilePath, json);
+            ApplyHistoryRetention();
+            File.WriteAllText(historyFilePath, JsonSerializer.Serialize(new HistoryStore { ItemRecords = completedHistory, Sessions = completedSessions }, new JsonSerializerOptions { WriteIndented = true }));
         }
         catch { }
     }
@@ -586,103 +773,66 @@ public class SpiritbondWindow : Window
                 var item = container->GetInventorySlot(slot);
                 if (item == null || item->ItemId == 0) continue;
 
-               // InventoryItem.ItemId zawiera bazowy ID itemu.
-// Jakość HQ jest przechowywana osobno w ItemFlags.
-if (item->ItemId != baseItemId)
-{
-    continue;
-}
+                if (item->ItemId != baseItemId) continue;
 
-uint actionItemId = item->ItemId;
+                uint actionItemId = item->ItemId;
+                if (item->Flags.HasFlag(InventoryItem.ItemFlags.HighQuality))
+                {
+                    actionItemId += 1_000_000;
+                }
 
-// UseItem wymaga ID akcji HQ, czyli bazowego ID + 1 000 000.
-if (item->Flags.HasFlag(InventoryItem.ItemFlags.HighQuality))
-{
-    actionItemId += 1_000_000;
-}
-
-location = new InventoryItemLocation(
-    actionItemId,
-    inventoryType,
-    (uint)slot
-);
-
-return true;
+                location = new InventoryItemLocation(actionItemId, inventoryType, (uint)slot);
+                return true;
             }
         }
 
         return false;
     }
 
-   private unsafe bool TryUseInventoryItem(
-    InventoryItemLocation item)
-{
-    var inventoryContext = AgentInventoryContext.Instance();
-
-    if (inventoryContext == null)
+    private unsafe bool TryUseInventoryItem(InventoryItemLocation item)
     {
-        chatGui.Print(
-            "[Spiritbond Tracker] Inventory context is unavailable."
-        );
+        var inventoryContext = AgentInventoryContext.Instance();
+        if (inventoryContext == null)
+        {
+            chatGui.Print("[Spiritbond Tracker] Inventory context is unavailable.");
+            return false;
+        }
 
-        return false;
+        long result = inventoryContext->UseItem(item.ItemId);
+        return result == 0;
     }
 
-    // UseItem samo odnajduje właściwy stack w normalnym inventory.
-    // item.ItemId zachowuje wariant normalny albo HQ:
-    // normal: 27960, HQ: 1027960.
-    long result = inventoryContext->UseItem(item.ItemId);
-
-    // Dla tej funkcji 0 oznacza poprawne przekazanie użycia itemu.
-    return result == 0;
-}
-
-  private unsafe bool TryUseSpiritbondPotion()
-{
-    if (!TryFindItemInNormalInventory(
-        SuperiorSpiritbondPotionBaseItemId,
-        out var potion))
+    private unsafe bool TryUseSpiritbondPotion()
     {
-        chatGui.Print(
-            "[Spiritbond Tracker] Superior Spiritbond Potion was not found in normal inventory."
-        );
+        if (!TryFindItemInNormalInventory(SuperiorSpiritbondPotionBaseItemId, out var potion))
+        {
+            chatGui.Print("[Spiritbond Tracker] Superior Spiritbond Potion was not found in normal inventory.");
+            return false;
+        }
 
-        return false;
+        return TryUseInventoryItem(potion);
     }
 
-    return TryUseInventoryItem(potion);
-}
-
-
-    
-
-   private unsafe bool TryUseSquadronManual()
-{
-    if (!TryFindItemInNormalInventory(
-        SquadronSpiritbondingManualItemId,
-        out var manual))
+    private unsafe bool TryUseSquadronManual()
     {
-        chatGui.Print(
-            "[Spiritbond Tracker] Squadron Spiritbonding Manual was not found in normal inventory."
-        );
+        if (!TryFindItemInNormalInventory(SquadronSpiritbondingManualItemId, out var manual))
+        {
+            chatGui.Print("[Spiritbond Tracker] Squadron Spiritbonding Manual was not found in normal inventory.");
+            return false;
+        }
 
-        return false;
+        return TryUseInventoryItem(manual);
     }
-
-    return TryUseInventoryItem(manual);
-}
-       
 
     public override unsafe void Update()
     {
         if (objectTable.LocalPlayer == null) return;
         
-        if (pendingSquadronManualUse &&
-            DateTime.UtcNow >= pendingSquadronManualUseAt)
-    {
+        if (pendingSquadronManualUse && DateTime.UtcNow >= pendingSquadronManualUseAt)
+        {
             pendingSquadronManualUse = false;
             TryUseSquadronManual();
-    }
+        }
 
         if (config.AutoEcoFieldOps)
         {
@@ -765,8 +915,6 @@ return true;
 
             if (itemChanged)
             {
-                // A gearset swap may reuse the same slot for an unrelated item.
-                // Its old baseline must never be used for the new item.
                 dutyStartSpiritbond.Remove(slot.Index);
                 previousSlotSpiritbond.Remove(slot.Index);
                 notifiedCappedSlots.Remove(slot.Index);
@@ -778,7 +926,6 @@ return true;
 
             if (!previousSlotSpiritbond.TryGetValue(slot.Index, out ushort previousSb))
             {
-                // First observation is a baseline, never a cap notification.
                 previousSlotSpiritbond[slot.Index] = currentSb;
                 continue;
             }
@@ -795,7 +942,6 @@ return true;
             previousSlotSpiritbond[slot.Index] = currentSb;
         }
 
-        // Update loop running every 250 ms
         if ((DateTime.UtcNow - lastGearRefresh).TotalMilliseconds >= 250)
         {
             cachedGearList = GetCurrentGearList();
@@ -834,14 +980,11 @@ return true;
                             cachedHasFoodBuff = true;
                             debugDetectedStatuses.Add($"Food: '{bName}' (ID: {status.StatusId})");
                         }
-                        // FC buff is display-only: it does not satisfy a required buff, trigger
-                        // a refresh, contribute to synergy, or produce an expiry warning.
                         else if (status.StatusId == FcSpiritbondStatusId)
                         {
                             cachedHasFcBuff = true;
                             debugDetectedStatuses.Add($"FC Spiritbond Action (display only): '{bName}' (ID: {status.StatusId}, Rem: {status.RemainingTime:F1}s)");
                         }
-                        // The actual Squadron Spiritbonding Manual status is ID 1038.
                         else if (status.StatusId == SquadronManualStatusId)
                         {
                             cachedHasManualBuff = status.RemainingTime > 0f;
@@ -851,7 +994,6 @@ return true;
                             if (config.WarnExpiringBuffs && IsExpiringTimedBuff(status.RemainingTime))
                                 cachedExpiringBuff = true;
                         }
-                        // Medicated is source-agnostic: do not claim it is a spiritbond potion.
                         else if (status.StatusId == MedicatedStatusId)
                         {
                             cachedHasMedicatedBuff = status.RemainingTime > 0f;
@@ -862,8 +1004,6 @@ return true;
                 }
             }
 
-            // Only the verified Squadron Manual can generate an expiry warning, once per entry
-            // into the final two-minute window. FC and Medicated are deliberately excluded.
             bool isInExpiryWindow = cachedExpiringBuff && config.WarnExpiringBuffs;
             if (isInExpiryWindow && !wasInExpiryWindow)
             {
@@ -1221,7 +1361,7 @@ return true;
 
         switch (config.UiLayoutStyleIndex)
         {
-            case 1: // Classic FF I-VI
+            case 1:
                 style.WindowRounding = 1.0f;
                 style.FrameRounding = 0.0f;
                 style.PopupRounding = 1.0f;
@@ -1231,7 +1371,7 @@ return true;
                 frameBgColor = new Vector4(0.02f, 0.03f, 0.10f, 1.0f);
                 break;
 
-            case 2: // Mac OS X
+            case 2:
                 style.WindowRounding = 8.0f;
                 style.FrameRounding = 6.0f;
                 style.PopupRounding = 6.0f;
@@ -1241,7 +1381,7 @@ return true;
                 frameBgColor = new Vector4(0.12f, 0.13f, 0.15f, 1.0f);
                 break;
 
-            case 3: // Xbox 360
+            case 3:
                 style.WindowRounding = 4.0f;
                 style.FrameRounding = 3.0f;
                 style.PopupRounding = 3.0f;
@@ -1251,7 +1391,7 @@ return true;
                 frameBgColor = new Vector4(0.04f, 0.04f, 0.04f, 1.0f);
                 break;
 
-            default: // Modern Dark
+            default:
                 style.WindowRounding = 8.0f;
                 style.FrameRounding = 5.0f;
                 style.PopupRounding = 5.0f;
@@ -1316,7 +1456,6 @@ return true;
             
             bool hasConsumable = cachedHasMedicatedBuff || cachedHasManualBuff;
 
-            // FC is shown in the tooltip only and never changes this result.
             if (hasConsumable)
             {
                 ImGui.TextColored(config.HighContrastMode ? new Vector4(0.0f, 1.0f, 0.0f, 1.0f) : new Vector4(0.2f, 1.0f, 0.4f, 1.0f), "✨ Synergy: OPTIMAL (Consumable Active)");
@@ -1361,13 +1500,6 @@ return true;
                 ImGui.TextColored(new Vector4(1.0f, 0.3f, 0.3f, 1.0f), "⚠️ Expiring (< 2m)!");
             }
 
-            // Single Smart Action Button
-            //
-            // Safety guard: never fire the Superior Spiritbonding Potion command if doing so
-            // would overwrite a crafting/gathering consumable (they share the same Medicated
-            // status slot) or if the player is currently on a Disciple of the Hand/Land job,
-            // since the spiritbond potion has no purpose there and would just waste a charge
-            // and clobber whatever craft/gathering buff is (or is about to be) active.
             bool isCraftingClass = IsCraftingClassActive();
             bool hasProtectedMedicated = cachedHasMedicatedBuff && cachedMedicatedRemaining > MedicatedOverwriteProtectionSeconds;
             bool blockSpiritbondPotion = isCraftingClass || hasProtectedMedicated;
@@ -1386,36 +1518,30 @@ return true;
                 ImGui.EndDisabled();
                 if (ImGui.IsItemHovered())
                 {
-                   if (potionBlockedWhileNeeded)
-{
-             string medicatedBlockReason = string.Empty;
+                    if (potionBlockedWhileNeeded)
+                    {
+                        string medicatedBlockReason = string.Empty;
+                        if (hasProtectedMedicated)
+                        {
+                            string medicatedMinutes = Math.Ceiling(cachedMedicatedRemaining / 60f).ToString("F0");
+                            medicatedBlockReason = "- A Medicated effect has " + medicatedMinutes + "m remaining (protected for >5m)\n";
+                        }
 
-if (hasProtectedMedicated)
-{
-    string medicatedMinutes =
-        Math.Ceiling(cachedMedicatedRemaining / 60f).ToString("F0");
+                        string craftingBlockReason = isCraftingClass
+                            ? "- Current job is a Disciple of the Hand\n"
+                            : string.Empty;
 
-    medicatedBlockReason =
-        "- A Medicated effect has " +
-        medicatedMinutes +
-        "m remaining (protected for >5m)\n";
-}
-
-string craftingBlockReason = isCraftingClass
-    ? "- Current job is a Disciple of the Hand\n"
-    : string.Empty;
-
-ImGui.SetTooltip(
-    "Superior Spiritbonding Potion was NOT applied because:\n" +
-    medicatedBlockReason +
-    craftingBlockReason +
-    "Switch to a non-crafting job and wait until the protected Medicated effect has 5 minutes or less remaining."
-);
-}
-else
-{
-    ImGui.SetTooltip("All Spiritbond consumables have more than 10 minutes remaining.");
-}
+                        ImGui.SetTooltip(
+                            "Superior Spiritbonding Potion was NOT applied because:\n" +
+                            medicatedBlockReason +
+                            craftingBlockReason +
+                            "Switch to a non-crafting job and wait until the protected Medicated effect has 5 minutes or less remaining."
+                        );
+                    }
+                    else
+                    {
+                        ImGui.SetTooltip("All Spiritbond consumables have more than 10 minutes remaining.");
+                    }
                 }
             }
             else
@@ -1423,28 +1549,26 @@ else
                 string btnLabel = needsPotion ? "🧪 Apply Potion" : "📖 Apply Manual";
                 if (needsPotion && needsManual) btnLabel = "⚡ Apply All Buffs";
 
-               if (ImGui.SmallButton(btnLabel))
-{
-    if (needsPotion)
-    {
-        TryUseSpiritbondPotion();
-    }
+                if (ImGui.SmallButton(btnLabel))
+                {
+                    if (needsPotion)
+                    {
+                        TryUseSpiritbondPotion();
+                    }
 
-    if (needsManual)
-    {
-        // Jeżeli używamy też potiona, manual musi poczekać, ponieważ
-        // dwa /item w tym samym frame nie są wykonywane niezawodnie.
-        if (needsPotion)
-        {
-            pendingSquadronManualUse = true;
-            pendingSquadronManualUseAt = DateTime.UtcNow.AddSeconds(2.5);
-        }
-        else
-        {
-            TryUseSquadronManual();
-        }
-    }
-}
+                    if (needsManual)
+                    {
+                        if (needsPotion)
+                        {
+                            pendingSquadronManualUse = true;
+                            pendingSquadronManualUseAt = DateTime.UtcNow.AddSeconds(2.5);
+                        }
+                        else
+                        {
+                            TryUseSquadronManual();
+                        }
+                    }
+                }
 
                 if (ImGui.IsItemHovered())
                 {
@@ -1603,114 +1727,409 @@ else
 
         if (isHistoryWindowVisible)
         {
-            ImGui.SetNextWindowSize(new Vector2(950, 520), ImGuiCond.FirstUseEver);
-            if (ImGui.Begin("Spiritbond Past History", ref isHistoryWindowVisible, ImGuiWindowFlags.NoScrollbar))
+            ImGui.Begin("Spiritbond Past History###SpiritbondHistory", ImGuiWindowFlags.None);
+
+            ImGui.TextColored(
+                new Vector4(0.8f, 0.8f, 1.0f, 1.0f),
+                "Spiritbond Past History"
+            );
+            ImGui.Separator();
+
+            ImGui.SetNextItemWidth(300f);
+            ImGui.InputText("##HistorySearch", ref historySearchFilter, 100);
+            ImGui.SameLine();
+            ImGui.Text("🔍 Search (Duty / Job)");
+
+            ImGui.Spacing();
+
+            string[] kindFilters = { "All", "Standard Duty", "Field Ops", "Exploration", "Open World" };
+            int currentKindIndex = Array.IndexOf(kindFilters, historySessionTypeFilter);
+            if (currentKindIndex < 0) currentKindIndex = 0;
+            ImGui.SetNextItemWidth(200f);
+            if (ImGui.Combo("Content Type", ref currentKindIndex, kindFilters, kindFilters.Length))
             {
-                ImGui.TextColored(accentColor, "Duty & Session Progress History (Filtered)");
-                ImGui.Separator();
-                ImGui.Spacing();
-
-                ImGui.SetNextItemWidth(300f);
-                ImGui.InputText("##HistorySearch", ref historySearchFilter, 100);
-                ImGui.SameLine();
-                ImGui.Text("🔍 Search (Duty / Item / Job)");
-
-                ImGui.Spacing();
-                string[] catFilters = { "All", "Weapon", "Armor", "Accessory" };
-                int currentCatIndex = Array.IndexOf(catFilters, historyCategoryFilter);
-                if (currentCatIndex < 0) currentCatIndex = 0;
-                ImGui.SetNextItemWidth(200f);
-                if (ImGui.Combo("Category Filter", ref currentCatIndex, catFilters, catFilters.Length))
-                {
-                    historyCategoryFilter = catFilters[currentCatIndex];
-                }
-
-                ImGui.Spacing();
-                ImGui.Separator();
-
-                var filteredRecords = completedHistory.AsEnumerable();
-                if (!string.IsNullOrEmpty(historySearchFilter))
-                {
-                    filteredRecords = filteredRecords.Where(h => h.DutyName.Contains(historySearchFilter, StringComparison.OrdinalIgnoreCase) ||
-                        h.ItemName.Contains(historySearchFilter, StringComparison.OrdinalIgnoreCase) ||
-                        h.JobName.Contains(historySearchFilter, StringComparison.OrdinalIgnoreCase));
-                }
-
-                if (historyCategoryFilter != "All")
-                {
-                    filteredRecords = filteredRecords.Where(h => h.Category.Equals(historyCategoryFilter, StringComparison.OrdinalIgnoreCase));
-                }
-
-                var grouped = filteredRecords.GroupBy(h => h.SessionId).OrderByDescending(g => g.Max(x => x.Timestamp));
-                foreach (var group in grouped)
-                {
-                    float totalGroupGain = group.Sum(x => x.Gained);
-                    string dutyTitle = group.First().DutyName;
-                    string sessionDate = group.First().Timestamp.ToString("yyyy-MM-dd HH:mm");
-                    string jobUsed = group.First().JobName;
-                    string cardHeader = $"[Duty] {dutyTitle} ({jobUsed}) --> Total Gain: +{totalGroupGain:F2}% ({sessionDate})";
-
-                    if (config.HistoryViewMode == 0)
-                    {
-                        if (ImGui.TreeNode(cardHeader))
-                        {
-                            foreach (var item in group)
-                            {
-                                ImGui.BulletText($"{item.ItemName} (i{item.ItemLevel}) [{item.Category}] on {item.JobName}: +{item.Gained:F2}%");
-                            }
-
-                            ImGui.TreePop();
-                        }
-                    }
-                    else
-                    {
-                        if (ImGui.CollapsingHeader(cardHeader, ImGuiTreeNodeFlags.DefaultOpen))
-                        {
-                            ImGui.Indent(10f);
-                            ImGui.TextColored(new Vector4(0.8f, 0.8f, 0.8f, 1.0f), $"Items progressed in this entry as [{jobUsed}]:");
-
-                            // "yyyy-MM-dd HH:mm:ss" needs a fixed width; scale it with the UI font.
-                            float dateColumnWidth = 190f * fontScale;
-                            if (ImGui.BeginTable($"HistoryTable_{group.Key.GetHashCode()}", 6, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.ScrollX))
-                            {
-                                ImGui.TableSetupColumn("Item Name", ImGuiTableColumnFlags.WidthStretch);
-                                ImGui.TableSetupColumn("Category", ImGuiTableColumnFlags.WidthFixed, 80f * fontScale);
-                                ImGui.TableSetupColumn("Job", ImGuiTableColumnFlags.WidthFixed, 70f * fontScale);
-                                ImGui.TableSetupColumn("iLvl", ImGuiTableColumnFlags.WidthFixed, 50f * fontScale);
-                                ImGui.TableSetupColumn("Gain", ImGuiTableColumnFlags.WidthFixed, 65f * fontScale);
-                                ImGui.TableSetupColumn("Date & Time", ImGuiTableColumnFlags.WidthFixed, dateColumnWidth);
-                                ImGui.TableHeadersRow();
-                                foreach (var item in group)
-                                {
-                                    ImGui.TableNextRow();
-                                    ImGui.TableNextColumn();
-                                    ImGui.TextColored(accentColor, item.ItemName);
-                                    ImGui.TableNextColumn();
-                                    ImGui.Text(item.Category);
-                                    ImGui.TableNextColumn();
-                                    ImGui.TextColored(new Vector4(0.4f, 0.8f, 1.0f, 1.0f), item.JobName);
-                                    ImGui.TableNextColumn();
-                                    ImGui.Text($"i{item.ItemLevel}");
-                                    ImGui.TableNextColumn();
-                                    ImGui.TextColored(new Vector4(0.0f, 1.0f, 0.5f, 1.0f), item.Gained > 0 ? $"+{item.Gained:F2}%" : "0.00%");
-                                    ImGui.TableNextColumn();
-                                    ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1.0f), item.Timestamp.ToString("yyyy-MM-dd HH:mm:ss"));
-                                }
-
-                                ImGui.EndTable();
-                            }
-
-                            ImGui.Unindent(10f);
-                            ImGui.Spacing();
-                        }
-                    }
-                }
-
-                if (!grouped.Any())
-                    ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1.0f), "No history entries match your search/filter criteria.");
-
-                ImGui.End();
+                historySessionTypeFilter = kindFilters[currentKindIndex];
             }
+
+            string[] periodFilters = { "All", "30d", "7d", "Today" };
+            int currentPeriodIndex = Array.IndexOf(periodFilters, historyPeriodFilter);
+            if (currentPeriodIndex < 0) currentPeriodIndex = 0;
+            ImGui.SetNextItemWidth(150f);
+            ImGui.SameLine();
+            if (ImGui.Combo("Period", ref currentPeriodIndex, periodFilters, periodFilters.Length))
+            {
+                historyPeriodFilter = periodFilters[currentPeriodIndex];
+            }
+
+            ImGui.Spacing();
+            ImGui.Separator();
+
+            var sessions = completedSessions.AsEnumerable();
+
+            if (!string.IsNullOrEmpty(historySearchFilter))
+            {
+                sessions = sessions.Where(s =>
+                    s.ContentName.Contains(historySearchFilter, StringComparison.OrdinalIgnoreCase) ||
+                    s.JobName.Contains(historySearchFilter, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (historySessionTypeFilter != "All")
+            {
+                sessions = sessions.Where(s => GetKindLabel(s.Kind) == historySessionTypeFilter);
+            }
+
+           var historyNow = DateTime.Now;
+                sessions = historyPeriodFilter switch
+                {
+                    "Today" => sessions.Where(s => s.EndedAt.Date == historyNow.Date),
+                    "7d"    => sessions.Where(s => s.EndedAt >= historyNow.AddDays(-7)),
+                    "30d"   => sessions.Where(s => s.EndedAt >= historyNow.AddDays(-30)),
+                    _       => sessions,
+                };
+
+            sessions = sessions.OrderByDescending(s => s.EndedAt);
+
+            int totalSessions = sessions.Count();
+            int totalPages = (int)Math.Ceiling(totalSessions / (double)HistoryPageSize);
+            historyPageIndex = Math.Clamp(historyPageIndex, 0, Math.Max(totalPages - 1, 0));
+            sessions = sessions
+                .Skip(historyPageIndex * HistoryPageSize)
+                .Take(HistoryPageSize);
+
+            var sessionList = sessions.ToList();
+
+            if (!sessionList.Any())
+            {
+                ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1.0f),
+                    "No history entries match your search/filter criteria.");
+            }
+            else
+            {
+        
+    foreach (var s in sessionList)
+    {
+        string kindLabel = GetKindLabel(s.Kind);
+
+        // Liczenie czasu trwania sesji (hh:mm) – tu definiujemy zmienną duration
+        string duration = s.EndedAt > s.StartedAt
+            ? $"{(s.EndedAt - s.StartedAt):hh\\:mm}"
+            : "—";
+
+        // Ładniejszy opis joba: Mixed jobs zamiast Unknown
+        string displayJob = s.JobName.Equals("Unknown", StringComparison.OrdinalIgnoreCase)
+            ? "Mixed jobs"
+            : s.JobName;
+
+        string cardHeader =
+            $"[{kindLabel}] {s.ContentName} ({displayJob}) " +
+            $"→ +{s.TotalGain:F2}% · {s.ItemsProgressed} items · {duration} " +
+            $"({s.EndedAt:yyyy-MM-dd HH:mm})";
+
+        var items = completedHistory
+            .Where(h => h.SessionId == s.SessionId)
+            .OrderBy(h => h.Timestamp)
+            .ToList();
+
+        if (config.HistoryViewMode == 0)
+        {
+            // Minimal – drzewko
+            if (ImGui.TreeNode(cardHeader))
+            {
+                foreach (var item in items)
+                {
+                    ImGui.BulletText(
+                        $"{item.ItemName} (i{item.ItemLevel}) [{item.Category}] " +
+                        $"on {item.JobName}: +{item.Gained:F2}%"
+                    );
+                }
+
+                ImGui.TreePop();
+            }
+        }
+        else
+        {
+            // Advanced Cards – tabela
+            if (ImGui.CollapsingHeader(cardHeader, ImGuiTreeNodeFlags.DefaultOpen))
+            {
+                ImGui.Indent(10f);
+    if ((s.Kind == ContentSessionKind.FieldOperation ||
+     s.Kind == ContentSessionKind.ExplorationZone) &&
+    s.Segments != null &&
+    s.Segments.Count > 0)
+{
+    bool openSegmentsByDefault = s.Segments.Count <= 5;
+
+    ImGui.TextColored(
+        new Vector4(0.8f, 0.8f, 0.8f, 1.0f),
+        $"Activity segments: {s.Segments.Count}" +
+        (openSegmentsByDefault ? string.Empty : " (click to expand)"));
+
+    ImGui.SetNextItemOpen(openSegmentsByDefault, ImGuiCond.FirstUseEver);
+
+    if (ImGui.TreeNode($"Show activity segments##Segments_{s.SessionId.GetHashCode()}"))
+    {
+       float segmentTableHeight = Math.Min(
+    220f * fontScale,
+    28f * fontScale + (s.Segments.Count * 23f * fontScale)
+);
+
+if (ImGui.BeginTable(
+    $"SegmentTable_{s.SessionId.GetHashCode()}",
+    5,
+    ImGuiTableFlags.Borders |
+    ImGuiTableFlags.RowBg |
+    ImGuiTableFlags.Resizable |
+    ImGuiTableFlags.ScrollY,
+    new Vector2(0f, segmentTableHeight)))
+{
+    ImGui.TableSetupColumn(
+        "Type",
+        ImGuiTableColumnFlags.WidthFixed,
+        92f * fontScale);
+
+    ImGui.TableSetupColumn(
+        "Job",
+        ImGuiTableColumnFlags.WidthFixed,
+        90f * fontScale);
+
+    ImGui.TableSetupColumn(
+        "Duration",
+        ImGuiTableColumnFlags.WidthFixed,
+        82f * fontScale);
+
+    ImGui.TableSetupColumn(
+        "Total Gain",
+        ImGuiTableColumnFlags.WidthFixed,
+        95f * fontScale);
+
+    ImGui.TableSetupColumn(
+        "Items",
+        ImGuiTableColumnFlags.WidthFixed,
+        60f * fontScale);
+
+    ImGui.TableSetupScrollFreeze(0, 1);
+    ImGui.TableHeadersRow();
+
+    foreach (var seg in s.Segments)
+    {
+        string segmentLabel = seg.Kind switch
+        {
+            ActivitySegmentKind.Active => "Active",
+            ActivitySegmentKind.Inactive => "Inactive",
+            ActivitySegmentKind.JobChange => "Job change",
+            _ => "Unknown",
+        };
+
+        Vector4 segmentColor = seg.Kind switch
+        {
+            ActivitySegmentKind.Active =>
+                new Vector4(0.25f, 0.95f, 0.55f, 1.0f),
+
+            ActivitySegmentKind.Inactive =>
+                new Vector4(1.0f, 0.75f, 0.25f, 1.0f),
+
+            ActivitySegmentKind.JobChange =>
+                new Vector4(0.35f, 0.75f, 1.0f, 1.0f),
+
+            _ =>
+                new Vector4(0.75f, 0.75f, 0.75f, 1.0f),
+        };
+
+        TimeSpan segmentDuration = seg.EndedAt > seg.StartedAt
+            ? seg.EndedAt - seg.StartedAt
+            : TimeSpan.Zero;
+
+        string segmentDurationText = segmentDuration > TimeSpan.Zero
+            ? $"{(int)segmentDuration.TotalMinutes:00}:{segmentDuration.Seconds:00}"
+            : "—";
+
+        ImGui.TableNextRow();
+
+        ImGui.TableNextColumn();
+        ImGui.TextColored(segmentColor, segmentLabel);
+
+        ImGui.TableNextColumn();
+        ImGui.Text(
+            string.IsNullOrWhiteSpace(seg.JobName)
+                ? "Unknown"
+                : seg.JobName);
+
+        ImGui.TableNextColumn();
+        ImGui.Text(segmentDurationText);
+
+        ImGui.TableNextColumn();
+        ImGui.TextColored(
+            new Vector4(0.0f, 1.0f, 0.5f, 1.0f),
+            seg.TotalGain > 0f
+                ? $"+{seg.TotalGain:F2}%"
+                : "0.00%");
+
+        ImGui.TableNextColumn();
+        ImGui.Text(seg.ItemsProgressed.ToString());
+    }
+
+    ImGui.EndTable();
+}
+
+        ImGui.TreePop();
+    }
+
+    ImGui.Separator();
+}
+                ImGui.TextColored(
+                    new Vector4(0.8f, 0.8f, 0.8f, 1.0f),
+                    $"Items progressed in this session as [{displayJob}]:"
+                );
+
+                float dateColumnWidth = 190f * fontScale;
+
+                if (ImGui.BeginTable(
+                    $"HistoryTable_{s.SessionId.GetHashCode()}",
+                    6,
+                    ImGuiTableFlags.Borders
+                    | ImGuiTableFlags.RowBg
+                    | ImGuiTableFlags.Resizable
+                    | ImGuiTableFlags.ScrollX))
+                {
+                    ImGui.TableSetupColumn(
+                        "Item Name",
+                        ImGuiTableColumnFlags.WidthStretch);
+                    ImGui.TableSetupColumn(
+                        "Category",
+                        ImGuiTableColumnFlags.WidthFixed, 80f * fontScale);
+                    ImGui.TableSetupColumn(
+                        "Job",
+                        ImGuiTableColumnFlags.WidthFixed, 70f * fontScale);
+                    ImGui.TableSetupColumn(
+                        "iLvl",
+                        ImGuiTableColumnFlags.WidthFixed, 50f * fontScale);
+                    ImGui.TableSetupColumn(
+                        "Gain",
+                        ImGuiTableColumnFlags.WidthFixed, 65f * fontScale);
+                    ImGui.TableSetupColumn(
+                        "Date & Time",
+                        ImGuiTableColumnFlags.WidthFixed, dateColumnWidth);
+
+                    ImGui.TableHeadersRow();
+
+                    foreach (var item in items)
+                    {
+                        ImGui.TableNextRow();
+
+                        ImGui.TableNextColumn();
+                        ImGui.TextColored(accentColor, item.ItemName);
+
+                        ImGui.TableNextColumn();
+                        ImGui.Text(item.Category);
+
+                        ImGui.TableNextColumn();
+                        ImGui.TextColored(
+                            new Vector4(0.4f, 0.8f, 1.0f, 1.0f),
+                            item.JobName);
+
+                        ImGui.TableNextColumn();
+                        ImGui.Text($"i{item.ItemLevel}");
+
+                        ImGui.TableNextColumn();
+                        ImGui.TextColored(
+                            new Vector4(0.0f, 1.0f, 0.5f, 1.0f),
+                            item.Gained > 0 ? $"+{item.Gained:F2}%" : "0.00%");
+
+                        ImGui.TableNextColumn();
+                        ImGui.TextColored(
+                            new Vector4(0.7f, 0.7f, 0.7f, 1.0f),
+                            item.Timestamp.ToString("yyyy-MM-dd HH:mm:ss"));
+                    }
+
+                    ImGui.EndTable();
+                }
+
+                ImGui.Unindent(10f);
+                ImGui.Spacing();
+                // Dodatkowy widok segmentów dla Field Ops / Exploration
+if ((s.Kind == ContentSessionKind.FieldOperation || s.Kind == ContentSessionKind.ExplorationZone)
+    && s.Segments != null
+    && s.Segments.Count > 0)
+{
+    ImGui.Separator();
+    ImGui.TextColored(
+        new Vector4(0.8f, 0.8f, 0.8f, 1.0f),
+        "Activity segments in this session:");
+
+    ImGui.Spacing();
+
+    // Prosta tabela segmentów: Type, Job, Duration, Total Gain, Items
+    if (ImGui.BeginTable(
+        $"SegmentTable_{s.SessionId.GetHashCode()}",
+        5,
+        ImGuiTableFlags.Borders
+        | ImGuiTableFlags.RowBg
+        | ImGuiTableFlags.Resizable))
+    {
+        ImGui.TableSetupColumn("Type", ImGuiTableColumnFlags.WidthFixed, 90f * fontScale);
+        ImGui.TableSetupColumn("Job", ImGuiTableColumnFlags.WidthFixed, 80f * fontScale);
+        ImGui.TableSetupColumn("Duration", ImGuiTableColumnFlags.WidthFixed, 80f * fontScale);
+        ImGui.TableSetupColumn("Total Gain", ImGuiTableColumnFlags.WidthFixed, 90f * fontScale);
+        ImGui.TableSetupColumn("Items", ImGuiTableColumnFlags.WidthFixed, 60f * fontScale);
+
+        ImGui.TableHeadersRow();
+
+        foreach (var seg in s.Segments)
+        {
+            ImGui.TableNextRow();
+
+            // Type
+            ImGui.TableNextColumn();
+            string segTypeLabel = seg.Kind switch
+            {
+                ActivitySegmentKind.Active    => "Active",
+                ActivitySegmentKind.Inactive  => "Inactive",
+                ActivitySegmentKind.JobChange => "Job change",
+                _                             => "Unknown",
+            };
+            ImGui.Text(segTypeLabel);
+
+            // Job
+            ImGui.TableNextColumn();
+            ImGui.Text(string.IsNullOrEmpty(seg.JobName) ? "Unknown" : seg.JobName);
+
+            // Duration (mm:ss)
+            ImGui.TableNextColumn();
+            var dur = seg.EndedAt > seg.StartedAt
+                ? (seg.EndedAt - seg.StartedAt)
+                : TimeSpan.Zero;
+            ImGui.Text(dur == TimeSpan.Zero ? "—" : $"{(int)dur.TotalMinutes:00}:{dur.Seconds:00}");
+
+            // Total gain
+            ImGui.TableNextColumn();
+            ImGui.TextColored(
+                new Vector4(0.0f, 1.0f, 0.5f, 1.0f),
+                seg.TotalGain > 0 ? $"+{seg.TotalGain:F2}%" : "0.00%");
+
+            // Items
+            ImGui.TableNextColumn();
+            ImGui.Text(seg.ItemsProgressed.ToString());
+        }
+
+        ImGui.EndTable();
+    }
+
+    ImGui.Spacing();
+}
+            }
+        }
+    }
+}
+
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Text($"Page {historyPageIndex + 1}/{Math.Max(totalPages, 1)}");
+            ImGui.SameLine();
+            if (ImGui.Button("Prev") && historyPageIndex > 0) historyPageIndex--;
+            ImGui.SameLine();
+            if (ImGui.Button("Next") && historyPageIndex < totalPages - 1) historyPageIndex++;
+
+            ImGui.End();
         }
 
         if (isStatsWindowVisible)
@@ -1726,10 +2145,10 @@ else
                 ImGui.Spacing();
                 ImGui.Separator();
 
-                var now = DateTime.Now;
-                float todayGain = completedHistory.Where(h => h.Timestamp.Date == now.Date).Sum(h => h.Gained);
-                float weekGain = completedHistory.Where(h => h.Timestamp >= now.AddDays(-7)).Sum(h => h.Gained);
-                float monthGain = completedHistory.Where(h => h.Timestamp >= now.AddDays(-30)).Sum(h => h.Gained);
+                var statsNow = DateTime.Now;
+                float todayGain = completedHistory.Where(h => h.Timestamp.Date == statsNow.Date).Sum(h => h.Gained);
+                float weekGain  = completedHistory.Where(h => h.Timestamp >= statsNow.AddDays(-7)).Sum(h => h.Gained);
+                float monthGain = completedHistory.Where(h => h.Timestamp >= statsNow.AddDays(-30)).Sum(h => h.Gained);
 
                 ImGui.Text($"Today's Gain: "); ImGui.SameLine();
                 ImGui.TextColored(new Vector4(0.0f, 1.0f, 0.5f, 1.0f), $"+{todayGain:F2}%");
