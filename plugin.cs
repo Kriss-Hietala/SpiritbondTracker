@@ -882,8 +882,13 @@ private static string InferSessionJobName(IEnumerable<HistoryRecord> records)
             var cfc = territory.Value.ContentFinderCondition.Value;
             if (cfc.RowId != 0)
             {
-                currentDutyLevel = cfc.ItemLevelSync > 0 ? cfc.ItemLevelSync :
-                    (cfc.ItemLevelRequired > 0 ? cfc.ItemLevelRequired : cfc.ClassJobLevelRequired);
+            // Dla heurystyki spiritbondu preferujemy wymagany iLvl wejścia.
+            // Combat iLvl sync jest wyświetlany osobno i nie służy jako baza SB.
+            currentDutyLevel = cfc.ItemLevelRequired > 0
+            ? cfc.ItemLevelRequired
+            : (cfc.ItemLevelSync > 0
+            ? cfc.ItemLevelSync
+            : cfc.ClassJobLevelRequired);
             }
         }
         else
@@ -1117,21 +1122,32 @@ private static string InferSessionJobName(IEnumerable<HistoryRecord> records)
 
             if (gainedInDuty > 0f)
             {
-                eligibility = "Active Gain";
+                eligibility = "Gaining";
                 eligColor = config.HighContrastMode ? new Vector4(0.0f, 1.0f, 1.0f, 1.0f) : new Vector4(0.2f, 1.0f, 0.5f, 1.0f);
             }
             else if (currentDutyLevel > 0)
             {
-                if (cachedData.ItemLevel > currentDutyLevel + 50)
-                {
-                    eligibility = "Too High";
-                    eligColor = config.HighContrastMode ? new Vector4(1.0f, 0.0f, 0.0f, 1.0f) : new Vector4(1.0f, 0.2f, 0.2f, 1.0f);
-                }
-                else if (cachedData.ItemLevel > currentDutyLevel + 25)
-                {
-                    eligibility = "Reduced";
-                    eligColor = config.HighContrastMode ? new Vector4(1.0f, 1.0f, 0.0f, 1.0f) : new Vector4(1.0f, 0.8f, 0.2f, 1.0f);
-                }
+               if (cachedData.ItemLevel > currentDutyLevel + 60)
+{
+    eligibility = "No Gain";
+    eligColor = config.HighContrastMode
+        ? new Vector4(1.0f, 0.0f, 0.0f, 1.0f)
+        : new Vector4(1.0f, 0.2f, 0.2f, 1.0f);
+}
+else if (cachedData.ItemLevel > currentDutyLevel + 50)
+{
+    eligibility = "Reduced";
+    eligColor = config.HighContrastMode
+        ? new Vector4(1.0f, 1.0f, 0.0f, 1.0f)
+        : new Vector4(1.0f, 0.8f, 0.2f, 1.0f);
+}
+else if (cachedData.ItemLevel > currentDutyLevel + 35)
+{
+    eligibility = "Reduced";
+    eligColor = config.HighContrastMode
+        ? new Vector4(1.0f, 1.0f, 0.0f, 1.0f)
+        : new Vector4(1.0f, 0.8f, 0.2f, 1.0f);
+}
             }
 
             list.Add(new GearDisplayInfo
