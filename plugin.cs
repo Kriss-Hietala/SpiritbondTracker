@@ -94,6 +94,8 @@ public sealed class Plugin : IDalamudPlugin
 
     public void Dispose()
     {
+        this.mainWindow.SaveSessionToHistory();
+
         this.pluginInterface.UiBuilder.Draw -= DrawUI;
         this.pluginInterface.UiBuilder.OpenMainUi -= ToggleMainWindow;
         this.pluginInterface.UiBuilder.OpenConfigUi -= ToggleSettingsWindow;
@@ -326,6 +328,9 @@ public class SpiritbondWindow : Window
     private string historyPeriodFilter = "30d";
     private int historyPageIndex = 0;
     private const int HistoryPageSize = 25;
+
+    private bool expandVisibleHistoryEntries = false;
+    private bool collapseVisibleHistoryEntries = false;
 
     private bool isHistoryWindowVisible = false;
     private bool isStatsWindowVisible = false;
@@ -567,7 +572,14 @@ public class SpiritbondWindow : Window
 
     private static ContentSessionKind ClassifyContent(string name, bool isDuty)
     {
-        if (name.Contains("Cosmic Exploration", StringComparison.OrdinalIgnoreCase) || name.Contains("Sinusorum", StringComparison.OrdinalIgnoreCase)) return ContentSessionKind.ExplorationZone;
+        if (name.Contains("Cosmic Exploration", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("Sinus Ardorum", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("Phaenna", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("Oizys", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("Auxesia", StringComparison.OrdinalIgnoreCase))
+{
+    return ContentSessionKind.ExplorationZone;
+}
         if (name.Contains("Eureka", StringComparison.OrdinalIgnoreCase) || name.Contains("Bozja", StringComparison.OrdinalIgnoreCase) || name.Contains("Zadnor", StringComparison.OrdinalIgnoreCase) || name.Contains("Occult Crescent", StringComparison.OrdinalIgnoreCase) ||
             name.Contains("South Horn", StringComparison.OrdinalIgnoreCase) ||
             name.Contains("North Horn", StringComparison.OrdinalIgnoreCase)) return ContentSessionKind.FieldOperation;
@@ -872,41 +884,67 @@ private static string InferSessionJobName(IEnumerable<HistoryRecord> records)
         if (equippedContainer == null) return;
 
         uint territoryId = clientState.TerritoryType;
-        var territory = dataManager.GetExcelSheet<TerritoryRow>()?.GetRowOrDefault(territoryId);
 
-        if (territory.HasValue)
-        {
-            var placeName = territory.Value.PlaceName.Value.Name.ToString();
-            currentDutyName = !string.IsNullOrEmpty(placeName) ? placeName : $"Territory #{territoryId}";
+string detectedDutyName = $"Territory #{territoryId}";
+uint detectedDutyLevel = 0;
 
-            var cfc = territory.Value.ContentFinderCondition.Value;
-            if (cfc.RowId != 0)
-            {
-            // Dla heurystyki spiritbondu preferujemy wymagany iLvl wejścia.
-            // Combat iLvl sync jest wyświetlany osobno i nie służy jako baza SB.
-            currentDutyLevel = cfc.ItemLevelRequired > 0
+var territory = dataManager.GetExcelSheet<TerritoryRow>()?.GetRowOrDefault(territoryId);
+
+if (territory.HasValue)
+{
+    string placeName = territory.Value.PlaceName.Value.Name.ToString();
+
+    detectedDutyName = !string.IsNullOrEmpty(placeName)
+        ? placeName
+        : $"Territory #{territoryId}";
+
+    var cfc = territory.Value.ContentFinderCondition.Value;
+
+    if (cfc.RowId != 0)
+    {
+        // Dla heurystyki spiritbondu preferujemy wymagany iLvl wejścia.
+        // iLvl sync jest używany wyłącznie jako fallback, gdy entry iLvl nie istnieje.
+        detectedDutyLevel = cfc.ItemLevelRequired > 0
             ? cfc.ItemLevelRequired
             : (cfc.ItemLevelSync > 0
-            ? cfc.ItemLevelSync
-            : cfc.ClassJobLevelRequired);
-            }
-        }
-        else
-        {
-            currentDutyName = "Overworld / Field Ops";
-            currentDutyLevel = 0;
-        }
+                ? cfc.ItemLevelSync
+                : cfc.ClassJobLevelRequired);
+    }
+}
+else
+{
+    detectedDutyName = "Overworld / Field Ops";
+    detectedDutyLevel = 0;
+}
 
-        string sessionKey = $"{currentDutyName}_{inDuty}_{territoryId}";
-        if (lastTrackedDuty != sessionKey)
-        {
-            SaveSessionToHistory();
-            dutyStartSpiritbond.Clear();
-            previousSlotSpiritbond.Clear();
-            notifiedCappedSlots.Clear();
-            lastTrackedDuty = sessionKey;
-            currentSessionId = $"{currentDutyName} ({DateTime.Now:yyyy-MM-dd HH:mm:ss})";
-        }
+string detectedSessionKey = $"{detectedDutyName}_{inDuty}_{territoryId}";
+
+if (lastTrackedDuty != detectedSessionKey)
+{
+    // Ważne: zapis starej sesji następuje zanim nadpiszemy currentDutyName.
+    // Dzięki temu opuszczona planeta Cosmic Exploration zapisze się jako Oizys,
+    // Phaenna, Sinus Ardorum albo Auxesia.
+    SaveSessionToHistory();
+
+    dutyStartSpiritbond.Clear();
+    previousSlotSpiritbond.Clear();
+    notifiedCappedSlots.Clear();
+    trackedItemIds.Clear();
+
+    currentDutyName = detectedDutyName;
+    currentDutyLevel = detectedDutyLevel;
+    lastTrackedDuty = detectedSessionKey;
+
+    currentSessionId =
+        $"{currentDutyName} ({DateTime.Now:yyyy-MM-dd HH:mm:ss})";
+}
+else
+{
+    // Odśwież dane bieżącej strefy bez rozpoczynania nowej sesji.
+    currentDutyName = detectedDutyName;
+    currentDutyLevel = detectedDutyLevel;
+}
+        
 
         foreach (var slot in Slots)
         {
@@ -1127,19 +1165,12 @@ private static string InferSessionJobName(IEnumerable<HistoryRecord> records)
             }
             else if (currentDutyLevel > 0)
             {
-               if (cachedData.ItemLevel > currentDutyLevel + 60)
+               if (cachedData.ItemLevel >= currentDutyLevel + 70)
 {
     eligibility = "No Gain";
     eligColor = config.HighContrastMode
         ? new Vector4(1.0f, 0.0f, 0.0f, 1.0f)
         : new Vector4(1.0f, 0.2f, 0.2f, 1.0f);
-}
-else if (cachedData.ItemLevel > currentDutyLevel + 50)
-{
-    eligibility = "Reduced";
-    eligColor = config.HighContrastMode
-        ? new Vector4(1.0f, 1.0f, 0.0f, 1.0f)
-        : new Vector4(1.0f, 0.8f, 0.2f, 1.0f);
 }
 else if (cachedData.ItemLevel > currentDutyLevel + 35)
 {
@@ -1814,8 +1845,25 @@ else if (cachedData.ItemLevel > currentDutyLevel + 35)
 
             var sessionList = sessions.ToList();
 
-            if (!sessionList.Any())
-            {
+if (ImGui.SmallButton("Expand visible"))
+{
+    expandVisibleHistoryEntries = true;
+    collapseVisibleHistoryEntries = false;
+}
+
+ImGui.SameLine();
+
+if (ImGui.SmallButton("Collapse visible"))
+{
+    collapseVisibleHistoryEntries = true;
+    expandVisibleHistoryEntries = false;
+}
+
+ImGui.SameLine();
+ImGui.TextDisabled($"({sessionList.Count} shown)");
+
+if (!sessionList.Any())
+{
                 ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1.0f),
                     "No history entries match your search/filter criteria.");
             }
@@ -1845,6 +1893,15 @@ else if (cachedData.ItemLevel > currentDutyLevel + 35)
             .Where(h => h.SessionId == s.SessionId)
             .OrderBy(h => h.Timestamp)
             .ToList();
+            if (expandVisibleHistoryEntries)
+            {
+            ImGui.SetNextItemOpen(true, ImGuiCond.Always);
+            }
+            else if (collapseVisibleHistoryEntries)
+            {
+            ImGui.SetNextItemOpen(false, ImGuiCond.Always);
+            }
+
 
         if (config.HistoryViewMode == 0)
         {
@@ -1861,6 +1918,7 @@ else if (cachedData.ItemLevel > currentDutyLevel + 35)
 
                 ImGui.TreePop();
             }
+            
         }
         else
         {
@@ -1999,14 +2057,21 @@ if (ImGui.BeginTable(
 
                 float dateColumnWidth = 190f * fontScale;
 
-                if (ImGui.BeginTable(
-                    $"HistoryTable_{s.SessionId.GetHashCode()}",
-                    6,
-                    ImGuiTableFlags.Borders
-                    | ImGuiTableFlags.RowBg
-                    | ImGuiTableFlags.Resizable
-                    | ImGuiTableFlags.ScrollX))
-                {
+               float historyTableHeight = Math.Min(
+    260f * fontScale,
+    28f * fontScale + (items.Count * 23f * fontScale)
+);
+
+if (ImGui.BeginTable(
+    $"HistoryTable_{s.SessionId.GetHashCode()}",
+    6,
+    ImGuiTableFlags.Borders
+    | ImGuiTableFlags.RowBg
+    | ImGuiTableFlags.Resizable
+    | ImGuiTableFlags.ScrollX
+    | ImGuiTableFlags.ScrollY,
+    new Vector2(0f, historyTableHeight)))
+{
                     ImGui.TableSetupColumn(
                         "Item Name",
                         ImGuiTableColumnFlags.WidthStretch);
@@ -2062,80 +2127,14 @@ if (ImGui.BeginTable(
 
                 ImGui.Unindent(10f);
                 ImGui.Spacing();
-                // Dodatkowy widok segmentów dla Field Ops / Exploration
-if ((s.Kind == ContentSessionKind.FieldOperation || s.Kind == ContentSessionKind.ExplorationZone)
-    && s.Segments != null
-    && s.Segments.Count > 0)
-{
-    ImGui.Separator();
-    ImGui.TextColored(
-        new Vector4(0.8f, 0.8f, 0.8f, 1.0f),
-        "Activity segments in this session:");
-
-    ImGui.Spacing();
-
-    // Prosta tabela segmentów: Type, Job, Duration, Total Gain, Items
-    if (ImGui.BeginTable(
-        $"SegmentTable_{s.SessionId.GetHashCode()}",
-        5,
-        ImGuiTableFlags.Borders
-        | ImGuiTableFlags.RowBg
-        | ImGuiTableFlags.Resizable))
-    {
-        ImGui.TableSetupColumn("Type", ImGuiTableColumnFlags.WidthFixed, 90f * fontScale);
-        ImGui.TableSetupColumn("Job", ImGuiTableColumnFlags.WidthFixed, 80f * fontScale);
-        ImGui.TableSetupColumn("Duration", ImGuiTableColumnFlags.WidthFixed, 80f * fontScale);
-        ImGui.TableSetupColumn("Total Gain", ImGuiTableColumnFlags.WidthFixed, 90f * fontScale);
-        ImGui.TableSetupColumn("Items", ImGuiTableColumnFlags.WidthFixed, 60f * fontScale);
-
-        ImGui.TableHeadersRow();
-
-        foreach (var seg in s.Segments)
-        {
-            ImGui.TableNextRow();
-
-            // Type
-            ImGui.TableNextColumn();
-            string segTypeLabel = seg.Kind switch
-            {
-                ActivitySegmentKind.Active    => "Active",
-                ActivitySegmentKind.Inactive  => "Inactive",
-                ActivitySegmentKind.JobChange => "Job change",
-                _                             => "Unknown",
-            };
-            ImGui.Text(segTypeLabel);
-
-            // Job
-            ImGui.TableNextColumn();
-            ImGui.Text(string.IsNullOrEmpty(seg.JobName) ? "Unknown" : seg.JobName);
-
-            // Duration (mm:ss)
-            ImGui.TableNextColumn();
-            var dur = seg.EndedAt > seg.StartedAt
-                ? (seg.EndedAt - seg.StartedAt)
-                : TimeSpan.Zero;
-            ImGui.Text(dur == TimeSpan.Zero ? "—" : $"{(int)dur.TotalMinutes:00}:{dur.Seconds:00}");
-
-            // Total gain
-            ImGui.TableNextColumn();
-            ImGui.TextColored(
-                new Vector4(0.0f, 1.0f, 0.5f, 1.0f),
-                seg.TotalGain > 0 ? $"+{seg.TotalGain:F2}%" : "0.00%");
-
-            // Items
-            ImGui.TableNextColumn();
-            ImGui.Text(seg.ItemsProgressed.ToString());
-        }
-
-        ImGui.EndTable();
-    }
-
-    ImGui.Spacing();
-}
             }
-        }
+        }      
+   
     }
-}
+            expandVisibleHistoryEntries = false;
+            collapseVisibleHistoryEntries = false;
+            }        
+    
 
             ImGui.Spacing();
             ImGui.Separator();
