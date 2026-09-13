@@ -4,7 +4,7 @@
   "Punchline": "Tracks spiritbond growth during duties and monitors buffs.",
   "Description": "Tracks equipment spiritbond increases during duties, groups them by instance, and monitors active spiritbond buffs.",
   "InternalName": "SpiritbondTracker",
-  "AssemblyVersion": "1.0.35.0",
+  "AssemblyVersion": "1.0.37.0",
   "RepoUrl": "https://github.com/Kriss-Hietala/SpiritbondTracker",
   "SupportedVersion": 3
 }
